@@ -666,6 +666,34 @@ function makeMergedDraft(group){
    ========================================================= */
 
 let BATCH_DRAFTS = [];   // 目前顯示中的草稿陣列
+let BATCH_SORT = 'date';  // 'date'=依日期(預設)、'emp'=依人名
+
+// 依目前選定的排序方式回傳排好的陣列(不改動原陣列)
+function sortedDrafts(){
+  const arr = [...BATCH_DRAFTS];
+  if(BATCH_SORT === 'emp'){
+    // 依員工名單順序,同一人內部再依日期
+    arr.sort((a,b)=>{
+      const oe = TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
+      if(oe !== 0) return oe;
+      return (a.mon*100+a.day) - (b.mon*100+b.day);
+    });
+  }else{
+    // 依日期,同日期再依員工名單順序
+    arr.sort((a,b)=>{
+      const od = (a.mon*100+a.day) - (b.mon*100+b.day);
+      if(od !== 0) return od;
+      return TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
+    });
+  }
+  return arr;
+}
+
+// 切換排序方式
+function setBatchSort(mode){
+  BATCH_SORT = mode;
+  renderDrafts();
+}
 
 // 掃描範圍下拉切換
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -719,7 +747,24 @@ function renderDrafts(){
     return;
   }
 
-  const rows = BATCH_DRAFTS.map((d,i)=>{
+  // 依目前排序方式取出「顯示順序」,但每筆保留在 BATCH_DRAFTS 的原始索引
+  // 這樣按鈕上的 index 仍指向 BATCH_DRAFTS 的位置,不需要動 removeDraft/updateDraftHM
+  const displayList = BATCH_DRAFTS.map((d, i) => ({ d, i })); // 原始索引
+  if(BATCH_SORT === 'emp'){
+    displayList.sort((a,b)=>{
+      const oe = TARGET_NAMES.indexOf(a.d.empKey) - TARGET_NAMES.indexOf(b.d.empKey);
+      if(oe !== 0) return oe;
+      return (a.d.mon*100+a.d.day) - (b.d.mon*100+b.d.day);
+    });
+  }else{
+    displayList.sort((a,b)=>{
+      const od = (a.d.mon*100+a.d.day) - (b.d.mon*100+b.d.day);
+      if(od !== 0) return od;
+      return TARGET_NAMES.indexOf(a.d.empKey) - TARGET_NAMES.indexOf(b.d.empKey);
+    });
+  }
+
+  const rows = displayList.map(({d, i}, displayIdx)=>{
     const isOT = d.type==='ot';
     const isMulti = d.type==='multiLeave';
 
@@ -733,7 +778,7 @@ function renderDrafts(){
       }).join(', ');
       return `
     <div class="draft-row multi">
-      <span class="dr-no">${i+1}</span>
+      <span class="dr-no">${displayIdx+1}</span>
       <span class="dr-date multi">${d.segments.length}段</span>
       <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
       <span class="dr-type lv">合寫請假</span>
@@ -755,15 +800,19 @@ function renderDrafts(){
       : `${d.mon}/${d.day}`;
     return `
     <div class="draft-row">
-      <span class="dr-no">${i+1}</span>
+      <span class="dr-no">${displayIdx+1}</span>
       <span class="dr-date">${dateLabel}</span>
       <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
       <span class="dr-type ${isOT?'ot':'lv'}">${typeLabel}</span>
       <span class="dr-detail">${detailLabel}</span>
       <span class="dr-time">
-        <input type="time" value="${sh.start}" onchange="updateDraft(${i},'start',this.value)">
-        <span>–</span>
-        <input type="time" value="${sh.end}" onchange="updateDraft(${i},'end',this.value)">
+        <input type="number" min="0" max="23" value="${(sh.start||':').split(':')[0]||''}" onchange="updateDraftHM(${i},'start','h',this.value)" title="時" placeholder="時">
+        <span>:</span>
+        <input type="number" min="0" max="59" value="${(sh.start||':').split(':')[1]||''}" onchange="updateDraftHM(${i},'start','m',this.value)" title="分" placeholder="分">
+        <span style="margin:0 3px">–</span>
+        <input type="number" min="0" max="23" value="${(sh.end||':').split(':')[0]||''}" onchange="updateDraftHM(${i},'end','h',this.value)" title="時" placeholder="時">
+        <span>:</span>
+        <input type="number" min="0" max="59" value="${(sh.end||':').split(':')[1]||''}" onchange="updateDraftHM(${i},'end','m',this.value)" title="分" placeholder="分">
       </span>
       <span class="dr-src" title="原班表：${d.sourceCode}">${d.sourceCode}</span>
       <button class="dr-del" onclick="removeDraft(${i})" title="刪除">✕</button>
@@ -775,10 +824,13 @@ function renderDrafts(){
       <div class="drafts-hd">
         <div>
           <b>批次草稿清單</b>
-          <small style="color:var(--ink-soft);margin-left:8px">依日期排序 · 可修改時間 · ✕ 刪除不要的</small>
+          <small style="color:var(--ink-soft);margin-left:8px">可修改時間 · ✕ 刪除不要的</small>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" onclick="clearDrafts()">清空</button>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--ink-soft);margin-right:4px">排序:</span>
+          <button class="btn-sort ${BATCH_SORT==='date'?'on':''}" onclick="setBatchSort('date')">依日期</button>
+          <button class="btn-sort ${BATCH_SORT==='emp'?'on':''}" onclick="setBatchSort('emp')">依人名</button>
+          <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="clearDrafts()">清空</button>
           <button class="btn btn-primary btn-sm" onclick="addAllDraftsToPrintList()">
             ＋ 全部加入列印清單（${BATCH_DRAFTS.length}）
           </button>
@@ -817,6 +869,20 @@ function updateDraft(idx, field, value){
   const d = BATCH_DRAFTS[idx]; if(!d) return;
   d.shift = { ...d.shift, [field]: value };
   // 同步到雲端
+  if(typeof syncUpdateDraft === 'function' && d._cloudId){
+    syncUpdateDraft(d._cloudId, { shift: d.shift });
+  }
+}
+
+// 分別更新時或分(field='start'|'end', hm='h'|'m')
+function updateDraftHM(idx, field, hm, value){
+  const d = BATCH_DRAFTS[idx]; if(!d) return;
+  const cur = d.shift?.[field] || '00:00';
+  const [h, m] = cur.split(':');
+  const newH = (hm === 'h') ? String(Math.max(0, Math.min(23, parseInt(value)||0))).padStart(2,'0') : h;
+  const newM = (hm === 'm') ? String(Math.max(0, Math.min(59, parseInt(value)||0))).padStart(2,'0') : m;
+  const newTime = `${newH}:${newM}`;
+  d.shift = { ...d.shift, [field]: newTime };
   if(typeof syncUpdateDraft === 'function' && d._cloudId){
     syncUpdateDraft(d._cloudId, { shift: d.shift });
   }

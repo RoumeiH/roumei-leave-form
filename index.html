@@ -277,11 +277,22 @@
   .dr-type.lv{background:#e6f3fb;color:#1f6e9e}
   .dr-type.ot{background:#fdecc7;color:#996208}
   .dr-detail{font-size:13.5px;color:var(--ink-soft);font-weight:600}
-  .dr-time{display:flex;align-items:center;gap:6px;font-size:13.5px}
-  .dr-time input{width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:13.5px}
+  .dr-time{display:flex;align-items:center;gap:2px;font-size:13px}
+  .dr-time input{width:44px;padding:5px 4px;border:1px solid var(--line);border-radius:5px;font-size:13px;text-align:center;-moz-appearance:textfield}
+  .dr-time input::-webkit-outer-spin-button,.dr-time input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .dr-time span{color:var(--ink-soft);font-size:12px}
   .dr-src{font-size:12px;color:var(--ink-soft);background:#f4f6f9;padding:5px 10px;border-radius:6px;text-align:center;white-space:nowrap}
   .dr-del{width:30px;height:30px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;color:var(--ink-soft);font-size:13px}
   .dr-del:hover{border-color:var(--danger);color:var(--danger)}
+
+  /* 排序切換 */
+  .btn-sort{
+    padding:5px 11px;background:#fff;border:1px solid var(--line);
+    color:var(--ink-soft);border-radius:6px;font-size:12px;font-weight:600;
+    cursor:pointer;font-family:inherit;transition:.12s;letter-spacing:.5px;
+  }
+  .btn-sort:hover{border-color:var(--brand);color:var(--brand)}
+  .btn-sort.on{background:var(--brand);color:#fff;border-color:var(--brand)}
   .dr-split{padding:5px 10px;background:#fff;border:1px solid #d8a55a;color:#8a5a10;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:700;letter-spacing:1px}
   .dr-split:hover{background:#fbe6c3}
   .draft-row.multi{background:#fbf7ec;border-left:3px solid #d8a55a}
