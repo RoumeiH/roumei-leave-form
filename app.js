@@ -283,8 +283,9 @@ function onEmpChange(){
 }
 function onMonthChange(){
   state.month = parseInt(document.getElementById('month').value,10) || null;
-  // 手動模式的人，日期下拉依賴月份，需重整
-  if(state.empName && isManual(state.empName)) refreshDays();
+  // 只要選了員工,月份變更就重整日期下拉
+  // (手動模式的人依賴月份;一般員工也要,因為 1-31 是依當月列的)
+  if(state.empName) refreshDays();
   // 同步民國年+月份到雲端
   if(typeof syncSaveSettings === 'function' && state.month){
     const rocYear = parseInt(document.getElementById('rocYear').value,10) || 115;
@@ -314,17 +315,36 @@ function refreshDays(){
 
   const emp = SCHEDULE[state.empName];
   daySel.innerHTML = '<option value="">— 請選擇日期 —</option>';
-  // days 的 key 是「月/日」，依日期排序列出
-  const keys = Object.keys(emp.days).sort((a,b)=>{
-    const [ma,da]=a.split('/').map(Number), [mb,db]=b.split('/').map(Number);
-    return ma-mb || da-db;
-  });
-  for(const key of keys){
-    const code = emp.days[key];
-    const sh = parseShift(code);
-    const tag = sh ? `${sh.start}-${sh.end}` : (code||'—');
-    const d = key.split('/')[1];
-    daySel.innerHTML += `<option value="${key}">${d} 日 ｜ ${tag||'(空)'}</option>`;
+  const M = parseInt(document.getElementById('month').value,10) || state.month;
+
+  // 列出 1~31 全部日期,班表有的顯示班別、班表沒有的標示「(手動)」
+  if(M){
+    const monthKeys = new Set(Object.keys(emp.days).filter(k => +k.split('/')[0] === M));
+    for(let d=1; d<=31; d++){
+      const key = `${M}/${d}`;
+      const inSchedule = monthKeys.has(key);
+      if(inSchedule){
+        const code = emp.days[key];
+        const sh = parseShift(code);
+        const tag = sh ? `${sh.start}-${sh.end}` : (code||'—');
+        daySel.innerHTML += `<option value="${key}">${d} 日 ｜ ${tag||'(空)'}</option>`;
+      }else{
+        daySel.innerHTML += `<option value="${key}">${d} 日 ｜ (手動)</option>`;
+      }
+    }
+  }else{
+    // 沒填月份 → 只列班表有的
+    const keys = Object.keys(emp.days).sort((a,b)=>{
+      const [ma,da]=a.split('/').map(Number), [mb,db]=b.split('/').map(Number);
+      return ma-mb || da-db;
+    });
+    for(const key of keys){
+      const code = emp.days[key];
+      const sh = parseShift(code);
+      const tag = sh ? `${sh.start}-${sh.end}` : (code||'—');
+      const d = key.split('/')[1];
+      daySel.innerHTML += `<option value="${key}">${d} 日 ｜ ${tag||'(空)'}</option>`;
+    }
   }
   renderSchedPreview(emp);
 }
@@ -1095,10 +1115,19 @@ function renderDynFields(){
   const todayShift = currentShift();      // 當天班別時間（休假類為 null）
   const sh = effectiveShift();            // 帶入用：休假日回退到標準工時
   const code = currentCode();
-  // 提示：當天是休假類但有推算到標準工時 → 告知已帶平常時段；完全推不到 → 告知留白
+  // 判斷這天是不是「班表外的日期」(手動選的、班表沒有這天)
+  const emp = SCHEDULE[state.empName];
+  const isOutOfSchedule = emp && state.dayKey && !(state.dayKey in emp.days);
   let offNote = '';
   if(!todayShift){
-    if(sh){
+    if(isOutOfSchedule){
+      // 班表沒這天(手動選的)
+      if(sh){
+        offNote = `<div class="mini-note">此日期不在班表內（手動開單），已自動帶入 <b>${sh.start}–${sh.end}</b>（${fullName(state.empName)} 平常上班時段），可自行修改。</div>`;
+      }else{
+        offNote = `<div class="mini-note">此日期不在班表內（手動開單），時間已留白供您手動填寫。</div>`;
+      }
+    }else if(sh){
       offNote = `<div class="mini-note">該日班表為「<b>${code||'—'}</b>」，已自動帶入 <b>${sh.start}–${sh.end}</b>（${fullName(state.empName)} 平常上班時段），可自行修改。</div>`;
     }else{
       offNote = `<div class="mini-note">該日班表為「<b>${code||'—'}</b>」，且無法從班表推算平常時段，時間已留白供您手動填寫。</div>`;
