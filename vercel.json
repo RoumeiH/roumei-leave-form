@@ -1,7 +1,9 @@
 {
   "version": 2,
-  "name": "leave-form-generator",
-  "builds": [
-    { "src": "**/*", "use": "@vercel/static" }
-  ]
+  "name": "roumei-leave-form",
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 10
+    }
+  }
 }

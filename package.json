@@ -1,0 +1,11 @@
+{
+  "name": "roumei-leave-form",
+  "version": "1.0.0",
+  "description": "柔美飯店假單系統",
+  "type": "module",
+  "engines": { "node": "20.x" },
+  "dependencies": {
+    "@line/bot-sdk": "^9.4.0",
+    "firebase-admin": "^12.7.0"
+  }
+}
