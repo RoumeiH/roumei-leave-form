@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柔美飯店 · 假單產生器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#1a2b3c; --ink-soft:#54657a; --line:#d8e0e8; --line-soft:#eef2f6;
+    --bg:#f4f6f9; --paper:#ffffff; --brand:#2b6cb0; --brand-dark:#1f4f82;
+    --accent:#c89b3c; --ok:#2f855a; --warn:#c05621; --danger:#c53030;
+    --shadow:0 1px 3px rgba(26,43,60,.08),0 6px 20px rgba(26,43,60,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ============ 畫面框架 ============ */
+  .app{display:grid;grid-template-columns:380px 1fr;min-height:100vh}
+  .panel{
+    background:var(--paper);border-right:1px solid var(--line);
+    padding:0;overflow-y:auto;height:100vh;position:sticky;top:0;
+  }
+  .stage{padding:32px 28px;overflow-y:auto;height:100vh}
+
+  .brand{
+    padding:22px 24px 18px;border-bottom:1px solid var(--line);
+    background:linear-gradient(135deg,var(--brand-dark),var(--brand));color:#fff;
+    position:sticky;top:0;z-index:5;
+  }
+  .brand h1{font-size:18px;font-weight:800;letter-spacing:.5px;display:flex;align-items:center;gap:9px}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(200,155,60,.3)}
+  .brand p{font-size:12px;opacity:.85;margin-top:3px;font-weight:400}
+
+  .section{padding:18px 24px;border-bottom:1px solid var(--line-soft)}
+  .section h2{
+    font-size:11px;font-weight:800;letter-spacing:1.5px;color:var(--ink-soft);
+    text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px
+  }
+  .section h2 .num{
+    width:18px;height:18px;border-radius:50%;background:var(--brand);color:#fff;
+    font-size:11px;display:grid;place-items:center;font-weight:700;flex:none
+  }
+
+  label.fld{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin:10px 0 4px}
+  input,select,textarea{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+    font-size:13px;font-family:inherit;color:var(--ink);background:#fcfdfe;transition:.15s
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(43,108,176,.12)}
+  textarea{resize:vertical;min-height:54px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;
+    padding:10px 16px;border:none;border-radius:9px;font-size:13px;font-weight:700;
+    font-family:inherit;cursor:pointer;transition:.15s;width:100%
+  }
+  .btn-primary{background:var(--brand);color:#fff}
+  .btn-primary:hover{background:var(--brand-dark)}
+  .btn-ghost{background:#eef4fa;color:var(--brand-dark)}
+  .btn-ghost:hover{background:#e0ecf7}
+  .btn-print{background:var(--accent);color:#3a2c08}
+  .btn-print:hover{filter:brightness(1.06)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-sm{padding:7px 11px;font-size:12px;width:auto}
+
+  /* 載入方式切換 */
+  .tabs{display:flex;gap:6px;background:#eef2f6;padding:4px;border-radius:10px;margin-bottom:6px}
+  .tabs button{
+    flex:1;padding:8px;border:none;background:transparent;border-radius:7px;
+    font-size:12px;font-weight:700;color:var(--ink-soft);cursor:pointer;font-family:inherit;transition:.15s
+  }
+  .tabs button.on{background:#fff;color:var(--brand-dark);box-shadow:var(--shadow)}
+
+  .drop{
+    border:2px dashed var(--line);border-radius:11px;padding:20px 14px;text-align:center;
+    cursor:pointer;transition:.15s;background:#fbfcfe
+  }
+  .drop:hover{border-color:var(--brand);background:#f5f9fd}
+  .drop .ic{font-size:26px;margin-bottom:6px;opacity:.6}
+  .drop p{font-size:12px;color:var(--ink-soft)}
+  .drop b{color:var(--brand-dark)}
+
+  .hint{font-size:11px;color:var(--ink-soft);margin-top:6px;line-height:1.5}
+  .hint a{color:var(--brand)}
+
+  .status{
+    margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:600;
+    display:none;align-items:center;gap:7px
+  }
+  .status.show{display:flex}
+  .status.ok{background:#e9f6ef;color:var(--ok)}
+  .status.err{background:#fdecea;color:var(--danger)}
+  .status.load{background:#fff7e6;color:var(--warn)}
+
+  .pill-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:4px}
+  .pill{
+    padding:8px 4px;border:1px solid var(--line);border-radius:8px;text-align:center;
+    font-size:12px;font-weight:600;cursor:pointer;background:#fff;transition:.12s
+  }
+  .pill:hover{border-color:var(--brand)}
+  .pill.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+  .formtype{display:flex;gap:6px;margin-top:4px}
+  .formtype button{
+    flex:1;padding:11px 6px;border:1px solid var(--line);border-radius:9px;background:#fff;
+    font-size:12.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;font-family:inherit;transition:.12s
+  }
+  .formtype button.on{background:var(--brand-dark);color:#fff;border-color:var(--brand-dark)}
+
+  .empty-stage{
+    display:grid;place-items:center;height:100%;text-align:center;color:var(--ink-soft)
+  }
+  .empty-stage .big{font-size:46px;opacity:.35;margin-bottom:14px}
+  .empty-stage h3{font-size:17px;color:var(--ink);margin-bottom:6px}
+  .empty-stage p{font-size:13px;max-width:340px}
+
+  .stage-head{
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;
+    max-width:820px;margin-left:auto;margin-right:auto
+  }
+  .stage-head .ttl{font-size:15px;font-weight:800;color:var(--ink)}
+  .stage-head .ttl span{color:var(--ink-soft);font-weight:500;font-size:13px}
+  .stage-head .acts{display:flex;gap:8px}
+
+  .sched-preview{margin-top:12px;border:1px solid var(--line-soft);border-radius:9px;overflow:hidden}
+  .sched-preview .hd{background:#f7fafc;padding:7px 11px;font-size:11px;font-weight:700;color:var(--ink-soft)}
+  .sched-days{display:flex;flex-wrap:wrap;gap:3px;padding:9px}
+  .sd{
+    min-width:34px;text-align:center;font-size:9.5px;padding:3px 2px;border-radius:5px;
+    background:#f4f6f9;cursor:pointer;border:1px solid transparent
+  }
+  .sd:hover{border-color:var(--brand)}
+  .sd .d{font-weight:700;color:var(--ink)}
+  .sd .t{color:var(--ink-soft);font-size:8.5px;margin-top:1px}
+  .sd.off{opacity:.5}
+  .sd.sel{background:var(--brand);border-color:var(--brand)}
+  .sd.sel .d,.sd.sel .t{color:#fff}
+
+  /* ============ A4 假單 ============ */
+  .sheet-wrap{max-width:820px;margin:0 auto}
+  .a4{
+    background:#fff;width:210mm;min-height:297mm;margin:0 auto;padding:14mm 14mm;
+    box-shadow:var(--shadow);transform-origin:top center;
+  }
+  @media(max-width:1400px){.a4{transform:scale(.92)}.sheet-wrap{margin-bottom:-40px}}
+  @media(max-width:1240px){.a4{transform:scale(.8)}.sheet-wrap{margin-bottom:-110px}}
+
+  .form-unit{border:2px solid #000;padding:0;margin-bottom:8mm}
+  .form-unit:last-child{margin-bottom:0}
+
+  .fu-title{text-align:center;padding:7px 0 5px;border-bottom:1.5px solid #000;position:relative}
+  .fu-title .co{font-size:13px;font-weight:700;letter-spacing:1px}
+  .fu-title .nm{font-size:19px;font-weight:800;letter-spacing:8px;margin-top:1px}
+  .fu-title .dt{position:absolute;right:10px;bottom:6px;font-size:12px;font-weight:600}
+
+  table.ft{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.ft td{border:1px solid #000;padding:5px 8px;vertical-align:middle}
+  table.ft .lb{background:#f2f2f2;font-weight:700;text-align:center;white-space:nowrap;width:90px;letter-spacing:1px}
+  table.ft .lb-sm{letter-spacing:0}
+  .ck{font-family:inherit}
+  .sign-row td{height:52px;vertical-align:bottom;font-size:12px;color:#333;text-align:center;padding-bottom:6px}
+  .note-cell{font-size:10.5px;line-height:1.7;color:#222}
+  .note-cell ol{margin:0;padding-left:18px}
+
+  .editable{background:#fffbe9;outline:1px dashed #d8c270;border-radius:2px;padding:0 2px;cursor:text}
+  @media print{.editable{background:transparent;outline:none}}
+
+  /* ====== v2 假單（貼近公司原版）====== */
+  .form-unit.v2{border:2px solid #000}
+  .fu-head{text-align:center;padding:8px 0 6px;border-bottom:2px solid #000;position:relative}
+  .fu-logo{display:block;margin:0 auto 2px;height:42px;width:auto}
+  .fu-logo.small{position:absolute;left:14px;top:6px;height:34px;margin:0}
+  .fu-co{font-size:18px;font-weight:800;letter-spacing:3px}
+  .fu-nm{font-size:23px;font-weight:800;letter-spacing:10px;margin-top:3px}
+  .fu-head.miss{text-align:center;padding:10px 0 8px}
+  .fu-head.miss .fu-nm{font-size:19px;letter-spacing:4px;margin-top:0}
+  .fu-apply{font-size:13px;font-weight:600;text-align:right;padding:5px 12px 2px}
+  .fu-apply.right{position:absolute;right:14px;bottom:8px;font-size:15px;font-weight:700}
+
+  table.ft.v2{width:100%;border-collapse:collapse;font-size:14px}
+  table.ft.v2 td{border:1px solid #000;padding:5px 9px;vertical-align:middle;line-height:1.7}
+  table.ft.v2 .lb{background:#fff;font-weight:700;text-align:center;white-space:nowrap;width:96px;letter-spacing:2px}
+  table.ft.v2 .lb-sm{letter-spacing:0;width:96px}
+  table.ft.v2 .big-name{font-size:20px;font-weight:800;text-align:center;letter-spacing:2px}
+  table.ft.v2 .note-cell{font-size:11px;line-height:1.65;color:#111}
+  table.ft.v2 .note-cell ol{margin:0;padding-left:20px}
+  .ckbox{font-family:inherit;margin-right:4px}
+  table.ft.v2 .sign-row td{height:54px;vertical-align:bottom;font-size:13px;color:#222;text-align:left;padding:0 0 8px 10px;letter-spacing:1px}
+  table.ft.v2 .sign-row.tall td{height:60px}
+
+  /* 列印 */
+  @media print{
+    @page{size:A4;margin:0}
+    body{background:#fff}
+    .app{display:block}
+    .panel,.stage-head,.no-print{display:none!important}
+    .stage{padding:0;height:auto;overflow:visible}
+    .sheet-wrap{max-width:none;margin:0}
+    .a4{
+      box-shadow:none;transform:none;margin:0;
+      width:210mm;height:297mm;padding:10mm 12mm;
+      page-break-after:always;
+      display:flex;flex-direction:column;justify-content:flex-start;gap:8mm;
+      overflow:hidden;
+    }
+    .a4:last-child{page-break-after:auto}
+    .form-unit{margin:0;page-break-inside:avoid;break-inside:avoid}
+    .form-unit.v2{max-height:135mm}
+    /* 縮一點字級以確保一頁兩張塞得下 */
+    table.ft.v2{font-size:13px}
+    table.ft.v2 td{padding:4px 8px;line-height:1.5}
+    .fu-logo{height:36px}
+    .fu-co{font-size:16px}
+    .fu-nm{font-size:21px}
+    table.ft.v2 .big-name{font-size:18px}
+    table.ft.v2 .note-cell{font-size:10px;line-height:1.5}
+    table.ft.v2 .sign-row td{height:46px}
+  }
+
+  .mini-note{font-size:11px;color:var(--ink-soft);background:#f7fafc;border-radius:7px;padding:8px 10px;margin-top:8px;line-height:1.5}
+
+  /* 使用者列 */
+  .user-bar{
+    display:flex;align-items:center;gap:8px;
+    padding:9px 24px;background:#f7fafc;
+    border-bottom:1px solid var(--line-soft);
+    font-size:11.5px;color:var(--ink-soft);
+  }
+  .ub-icon{font-size:14px}
+  .ub-email{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--ink)}
+  .ub-logout{
+    background:transparent;border:1px solid var(--line);
+    padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;
+    color:var(--ink-soft);cursor:pointer;font-family:inherit;
+  }
+  .ub-logout:hover{background:#fff;color:var(--danger);border-color:var(--danger)}
+  @media print{.user-bar{display:none!important}}
+
+  /* 列印清單管理區 */
+  .queue-box{max-width:820px;margin:0 auto 22px;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:var(--shadow)}
+  .queue-hd{background:#f7fafc;padding:9px 14px;font-size:11.5px;font-weight:700;color:var(--ink-soft);border-bottom:1px solid var(--line-soft)}
+
+  /* 批次草稿清單 */
+  .drafts-box{max-width:960px;margin:0 auto 22px;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:var(--shadow)}
+  .drafts-hd{background:#fff9e8;padding:11px 16px;border-bottom:1px solid var(--line-soft);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .drafts-list{max-height:65vh;overflow-y:auto}
+  .draft-row{display:grid;grid-template-columns:28px 52px 130px 68px 76px 200px 110px 32px;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line-soft);font-size:13px}
+  .draft-row:last-child{border-bottom:none}
+  .draft-row:hover{background:#fafcfe}
+  .dr-no{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
+  .dr-date{font-weight:700;color:var(--brand-dark);font-size:13.5px}
+  .dr-emp{color:var(--ink);font-weight:600}
+  .dr-emp small{color:var(--ink-soft);font-weight:400;font-size:11px}
+  .dr-type{text-align:center;padding:3px 6px;border-radius:5px;font-size:11.5px;font-weight:700;letter-spacing:1px}
+  .dr-type.lv{background:#e6f3fb;color:#1f6e9e}
+  .dr-type.ot{background:#fdecc7;color:#996208}
+  .dr-detail{font-size:12px;color:var(--ink-soft);font-weight:600}
+  .dr-time{display:flex;align-items:center;gap:4px;font-size:12px}
+  .dr-time input{width:82px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;font-size:12px}
+  .dr-src{font-size:10.5px;color:var(--ink-soft);background:#f4f6f9;padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap}
+  .dr-del{width:26px;height:26px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:var(--ink-soft);font-size:12px}
+  .dr-del:hover{border-color:var(--danger);color:var(--danger)}
+  @media(max-width:1000px){
+    .draft-row{grid-template-columns:24px 46px 1fr auto 32px;font-size:12px}
+    .dr-type,.dr-detail,.dr-time,.dr-src{grid-column:span 5;padding-left:82px;padding-top:2px}
+  }
+  .qitem{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line-soft);font-size:13px}
+  .qitem:last-child{border-bottom:none}
+  .qno{width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;flex:none}
+  .qlabel{flex:1;color:var(--ink);font-weight:500}
+  .qacts{display:flex;gap:4px}
+  .qacts button{width:28px;height:28px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;font-size:13px;color:var(--ink-soft);transition:.12s}
+  .qacts button:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+  .qacts button:disabled{opacity:.3;cursor:not-allowed}
+  .qacts button.del:hover{border-color:var(--danger);color:var(--danger)}
+  .sheet-wrap .a4{margin-bottom:24px}
+
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#c7d2dd;border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ 左側控制面板 ============ -->
+  <aside class="panel">
+    <div class="brand">
+      <h1><span class="dot"></span>柔美飯店 · 假單產生器</h1>
+      <p>依班表自動帶入 · A4 列印 · 員工簽名</p>
+    </div>
+    <div class="user-bar" id="userBar" style="display:none">
+      <span class="ub-icon">👤</span>
+      <span class="ub-email" id="userEmail">—</span>
+      <button class="ub-logout" onclick="Cloud.logout().then(()=>location.href='login.html')">登出</button>
+    </div>
+
+    <!-- 步驟1：載入班表 -->
+    <div class="section">
+      <h2><span class="num">1</span>載入班表</h2>
+      <div class="tabs">
+        <button id="tabGS" class="on" onclick="switchSource('gs')">Google Sheet</button>
+        <button id="tabFile" onclick="switchSource('file')">上傳 Excel</button>
+      </div>
+
+      <div id="srcGS">
+        <label class="fld">柔美班表 Google Sheet 連結</label>
+        <input type="text" id="gsUrl" placeholder="貼上 https://docs.google.com/spreadsheets/...">
+        <button class="btn btn-ghost" style="margin-top:8px" onclick="loadFromGoogleSheet()">讀取班表</button>
+        <div class="hint">貼上含當月班表的分頁連結（網址含 <b>#gid=</b> 的那一頁）。工具會依姓名自動抓出 10 位人員，並讀取表頭「月/日」對應日期。若讀不到，請確認共用設定為「知道連結的任何人 → 檢視者」。</div>
+      </div>
+
+      <div id="srcFile" style="display:none">
+        <div class="drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div class="ic">📋</div>
+          <p><b>點此選擇</b> 或拖曳班表 Excel<br>(同柔美班表格式)</p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+      </div>
+
+      <div class="status" id="loadStatus"></div>
+    </div>
+
+    <!-- 批次自動掃描 -->
+    <div class="section" id="stepBatch" style="opacity:.4;pointer-events:none">
+      <h2><span class="num">✨</span>批次自動產出</h2>
+      <div class="mini-note" style="margin-top:0;margin-bottom:10px">
+        自動掃全月班表，依規則批次產生草稿（<b>年→請假、國加→加班費、休加→補休</b>）。
+        產出後可修改／刪除，再加入列印清單。
+      </div>
+      <label class="fld">掃描範圍</label>
+      <select id="scanRange">
+        <option value="all" selected>整月一次全掃</option>
+        <option value="today">掃到今天為止</option>
+        <option value="custom">指定日期區間</option>
+      </select>
+      <div id="scanCustom" style="display:none;margin-top:6px">
+        <div class="row2">
+          <input id="scanFrom" type="text" placeholder="起 (5/1)">
+          <input id="scanTo" type="text" placeholder="迄 (5/31)">
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="runBatchScan()">
+        ✨ 開始掃描產出草稿
+      </button>
+    </div>
+
+    <!-- 步驟2：選擇員工與日期（例外/手動） -->
+    <div class="section" id="step2" style="opacity:.4;pointer-events:none">
+      <h2><span class="num">2</span>手動開單（例外處理）</h2>
+      <label class="fld">員工</label>
+      <select id="empSelect" onchange="onEmpChange()"><option>請先載入班表</option></select>
+
+      <label class="fld">當月份（民國年 / 月）</label>
+      <div class="row2">
+        <input type="number" id="rocYear" placeholder="115" value="115">
+        <input type="number" id="month" placeholder="月" min="1" max="12" onchange="onMonthChange()">
+      </div>
+
+      <div class="sched-preview" id="schedPreview" style="display:none">
+        <div class="hd">該員工當月班表（點選日期自動帶入）</div>
+        <div class="sched-days" id="schedDays"></div>
+      </div>
+
+      <label class="fld">選擇日期</label>
+      <select id="daySelect" onchange="onDayChange()"><option>—</option></select>
+    </div>
+
+    <!-- 步驟3：假單類型 -->
+    <div class="section" id="step3" style="opacity:.4;pointer-events:none">
+      <h2><span class="num">3</span>假單類型</h2>
+      <div class="formtype">
+        <button id="ftLeave" class="on" onclick="setFormType('leave')">請假單</button>
+        <button id="ftOT" onclick="setFormType('ot')">加班單</button>
+        <button id="ftMiss" onclick="setFormType('miss')">未刷卡證明單</button>
+      </div>
+      <div id="dynFields"></div>
+      <button class="btn btn-primary" style="margin-top:14px" onclick="generate()">＋ 加入列印清單</button>
+      <div class="mini-note">填好一張就「加入列印清單」，可重複加入不同員工、不同類別的假單。集滿後按右上角「列印」，系統會每 2 張排成一張 A4（上下聯）。產生後仍可點單據上黃底欄位手動改字。</div>
+    </div>
+  </aside>
+
+  <!-- ============ 右側預覽舞台 ============ -->
+  <main class="stage">
+    <div class="stage-head" id="stageHead" style="display:none">
+      <div class="ttl" id="stageTitle">列印清單</div>
+      <div class="acts">
+        <button class="btn btn-ghost btn-sm" onclick="clearList()" id="clearBtn">清空清單</button>
+        <button class="btn btn-print btn-sm" onclick="window.print()">🖨 列印 / 存PDF</button>
+      </div>
+    </div>
+
+    <div id="stageBody">
+      <div class="empty-stage">
+        <div>
+          <div class="big">🗂️</div>
+          <h3>列印清單是空的</h3>
+          <p>請依左側步驟：載入班表 → 選擇員工與日期 → 選假單類型 → 填好後「加入列印清單」。可重複加入不同假單，最後一起列印（每 2 張一頁 A4）。</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script type="module">
+  // 雲端模組(掛到 window.Cloud)
+  import "./cloud.js";
+  import { watchAuth } from "./cloud.js";
+
+  // 監聽登入狀態:未登入 → 導向 login.html;已登入 → 顯示 email
+  watchAuth(user => {
+    if(!user){
+      // 目前若在 login.html 就不重導
+      if(!location.pathname.endsWith("login.html")){
+        location.href = "login.html";
+      }
+      return;
+    }
+    // 已登入:顯示使用者列
+    const bar = document.getElementById("userBar");
+    const em = document.getElementById("userEmail");
+    if(bar) bar.style.display = "flex";
+    if(em) em.textContent = user.email || user.uid;
+    // 通知 app.js 可以開始做需要登入的事
+    window.dispatchEvent(new CustomEvent("cloudReady", { detail: { user } }));
+  });
+</script>
+</body>
+</html>

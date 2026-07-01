@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柔美飯店 · 假單系統登入</title>
+<style>
+  :root{
+    --ink:#1a2b3c; --ink-soft:#54657a; --line:#d8e0e8;
+    --bg:#f4f6f9; --paper:#ffffff; --brand:#2b6cb0; --brand-dark:#1f4f82;
+    --accent:#c89b3c; --danger:#c53030;
+    --shadow:0 4px 20px rgba(26,43,60,.08),0 20px 60px rgba(26,43,60,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:linear-gradient(135deg,#f4f6f9 0%,#e8eef5 100%);
+    color:var(--ink);
+    min-height:100vh;
+    display:grid;
+    place-items:center;
+    padding:20px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .card{
+    width:100%; max-width:400px;
+    background:var(--paper);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+
+  .brand{
+    background:linear-gradient(135deg,var(--brand-dark),var(--brand));
+    color:#fff;
+    padding:28px 28px 22px;
+    text-align:center;
+  }
+  .brand h1{
+    font-size:19px; font-weight:800; letter-spacing:.5px;
+    display:flex; align-items:center; justify-content:center; gap:9px;
+  }
+  .brand .dot{
+    width:9px; height:9px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 0 3px rgba(200,155,60,.3);
+  }
+  .brand p{
+    font-size:12px; opacity:.85; margin-top:6px; font-weight:400;
+    letter-spacing:1px;
+  }
+
+  .form{
+    padding:26px 28px 24px;
+  }
+  .form h2{
+    font-size:15px; font-weight:800; color:var(--ink);
+    margin-bottom:18px; text-align:center;
+  }
+
+  label{
+    display:block; font-size:12px; font-weight:600;
+    color:var(--ink-soft); margin:12px 0 4px;
+  }
+  input{
+    width:100%; padding:11px 13px; border:1px solid var(--line);
+    border-radius:9px; font-size:14px; font-family:inherit;
+    color:var(--ink); background:#fcfdfe; transition:.15s;
+  }
+  input:focus{
+    outline:none; border-color:var(--brand);
+    box-shadow:0 0 0 3px rgba(43,108,176,.12);
+  }
+
+  .btn{
+    display:block; width:100%; margin-top:20px;
+    padding:12px; border:none; border-radius:10px;
+    font-size:14px; font-weight:700; font-family:inherit;
+    background:var(--brand); color:#fff; cursor:pointer;
+    transition:.15s;
+  }
+  .btn:hover{ background:var(--brand-dark); }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .msg{
+    margin-top:14px; padding:10px 12px; border-radius:8px;
+    font-size:12.5px; font-weight:600; display:none;
+  }
+  .msg.show{ display:block; }
+  .msg.err{ background:#fdecea; color:var(--danger); }
+  .msg.info{ background:#e6f3fb; color:var(--brand-dark); }
+
+  .hint{
+    margin-top:16px; padding-top:16px;
+    border-top:1px solid var(--line);
+    font-size:11.5px; color:var(--ink-soft); line-height:1.6;
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <h1><span class="dot"></span>柔美飯店 · 假單系統</h1>
+    <p>Beauty Hotels · Leave Form System</p>
+  </div>
+  <div class="form">
+    <h2>管理者登入</h2>
+    <label for="email">電子郵件</label>
+    <input id="email" type="email" placeholder="your@email.com" autocomplete="email">
+    <label for="password">密碼</label>
+    <input id="password" type="password" placeholder="請輸入密碼" autocomplete="current-password">
+    <button class="btn" id="loginBtn" onclick="doLogin()">登 入</button>
+    <div class="msg" id="msg"></div>
+    <div class="hint">
+      首次使用請先在 Firebase 主控台<br>
+      建立管理者帳號
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { login, watchAuth } from "./cloud.js";
+
+  // 已登入者直接導回主頁
+  watchAuth(user => {
+    if(user){
+      window.location.href = "index.html";
+    }
+  });
+
+  window.doLogin = async function(){
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    const btn = document.getElementById("loginBtn");
+    const msg = document.getElementById("msg");
+
+    if(!email || !password){
+      msg.className = "msg show err";
+      msg.textContent = "請輸入電子郵件和密碼";
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "登入中…";
+    msg.className = "msg show info";
+    msg.textContent = "驗證中,請稍候…";
+
+    try{
+      await login(email, password);
+      msg.className = "msg show info";
+      msg.textContent = "登入成功,轉跳中…";
+      // watchAuth 會自動導回主頁
+    }catch(err){
+      const code = err.code || "";
+      let text = "登入失敗";
+      if(code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")){
+        text = "電子郵件或密碼錯誤";
+      }else if(code.includes("invalid-email")){
+        text = "電子郵件格式不正確";
+      }else if(code.includes("too-many-requests")){
+        text = "登入嘗試次數過多,請稍後再試";
+      }else if(code.includes("network")){
+        text = "網路連線失敗,請檢查網路";
+      }else{
+        text = "登入失敗:" + (err.message || code);
+      }
+      msg.className = "msg show err";
+      msg.textContent = text;
+      btn.disabled = false;
+      btn.textContent = "登 入";
+    }
+  };
+
+  // Enter 送出
+  document.getElementById("password").addEventListener("keypress", e => {
+    if(e.key === "Enter") window.doLogin();
+  });
+  document.getElementById("email").addEventListener("keypress", e => {
+    if(e.key === "Enter") document.getElementById("password").focus();
+  });
+</script>
+</body>
+</html>
