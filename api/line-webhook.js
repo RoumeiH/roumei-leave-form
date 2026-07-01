@@ -1,6 +1,7 @@
 // api/line-webhook.js
 // 接收 LINE 傳來的所有事件(加好友、訊息、Postback 等)
 
+import crypto from 'node:crypto';
 import * as lineSDK from '@line/bot-sdk';
 import { pushMessage, replyMessage, getUserProfile } from '../lib/line.js';
 import { findBindingByLineId } from '../lib/firebase.js';
@@ -22,7 +23,6 @@ function readRawBody(req) {
 
 // 驗證 LINE 簽章
 function verifySignature(rawBody, signature, secret) {
-  const crypto = require('crypto');
   const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
   return hash === signature;
 }
