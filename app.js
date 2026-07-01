@@ -170,6 +170,13 @@ async function loadFromGoogleSheet(){
       if(text.trim().startsWith('<')) continue; // 拿到HTML=權限不足
       const rows = csvToRows(text);
       parseScheduleRows(rows);
+      // 讀取成功 → 儲存 URL 到雲端,並加入「最近使用」清單
+      if(typeof syncSaveSettings === 'function'){
+        syncSaveSettings({ scheduleUrl: url });
+      }
+      if(typeof addRecentUrl === 'function'){
+        addRecentUrl(url);
+      }
       return;
     }catch(e){ /* try next */ }
   }
@@ -278,6 +285,11 @@ function onMonthChange(){
   state.month = parseInt(document.getElementById('month').value,10) || null;
   // 手動模式的人，日期下拉依賴月份，需重整
   if(state.empName && isManual(state.empName)) refreshDays();
+  // 同步民國年+月份到雲端
+  if(typeof syncSaveSettings === 'function' && state.month){
+    const rocYear = parseInt(document.getElementById('rocYear').value,10) || 115;
+    syncSaveSettings({ currentMonth: state.month, currentRocYear: rocYear });
+  }
 }
 function refreshDays(){
   const daySel = document.getElementById('daySelect');
@@ -504,7 +516,149 @@ function scanSchedule(options={}){
     if(oa !== ob) return oa - ob;
     return TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
   });
-  return drafts;
+
+  // 合併「同員工連續日期」的年假(reason='特休假')為一張
+  const afterConsec = mergeConsecutiveLeave(drafts);
+  // 再合併「同員工多筆請假」為四段式(每 4 筆一張,超過分張)
+  return mergeMultiLeavePerEmp(afterConsec);
+}
+
+/* 同員工有 ≥ 2 筆請假 → 合併為「四段式假單」(每 4 筆一張,超過分張)
+   規則:只合請假(type='leave'),加班和其他不動 */
+function mergeMultiLeavePerEmp(drafts){
+  const leaveDrafts = drafts.filter(d => d.type==='leave');
+  const otherDrafts = drafts.filter(d => d.type!=='leave');
+
+  // 依員工分組
+  const byEmp = {};
+  for(const d of leaveDrafts){
+    if(!byEmp[d.empKey]) byEmp[d.empKey] = [];
+    byEmp[d.empKey].push(d);
+  }
+
+  const results = [];
+  for(const empKey in byEmp){
+    const list = byEmp[empKey];
+    if(list.length < 2){
+      // 只有 1 筆,不合併
+      results.push(list[0]);
+      continue;
+    }
+    // 依日期排序
+    list.sort((a,b) => (a.mon*100+a.day) - (b.mon*100+b.day));
+    // 每 4 筆分一組,產生「四段式」草稿
+    for(let i = 0; i < list.length; i += 4){
+      const group = list.slice(i, i + 4);
+      results.push(makeMultiLeaveDraft(empKey, group));
+    }
+  }
+
+  // 加回其他草稿,排序
+  const all = [...results, ...otherDrafts];
+  all.sort((a,b)=>{
+    const oa = a.mon*100+a.day, ob = b.mon*100+b.day;
+    if(oa !== ob) return oa - ob;
+    return TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
+  });
+  return all;
+}
+
+// 建立四段式草稿(把 group 內的多筆假合成一筆)
+function makeMultiLeaveDraft(empKey, group){
+  const first = group[0];
+  return {
+    type: 'multiLeave',        // 新的類型
+    empKey,
+    dayKey: first.dayKey,      // 起日(供排序)
+    mon: first.mon,
+    day: first.day,
+    segments: group.map(d => ({
+      startMon: d.mon,
+      startDay: d.day,
+      endMon: d.endMon || d.mon,
+      endDay: d.endDay || d.day,
+      shift: d.shift,
+      reason: d.reason || '特休假',
+      note: '',
+      mergedCount: d.mergedCount || null    // 保留連續合併資訊
+    })),
+    sourceCode: group.length + ' 筆假'
+  };
+}
+
+/* 合併同員工的連續年假為一張假單。
+   規則：中間有任何非年假就分開(包含休/例/其他假、加班等)。
+   實作：按員工分組,再依日期連續性合併。 */
+function mergeConsecutiveLeave(drafts){
+  // 分兩類:年假 vs 其他(加班等)
+  const leaveDrafts = drafts.filter(d => d.type==='leave');
+  const otherDrafts = drafts.filter(d => d.type!=='leave');
+
+  // 依員工分組
+  const byEmp = {};
+  for(const d of leaveDrafts){
+    if(!byEmp[d.empKey]) byEmp[d.empKey] = [];
+    byEmp[d.empKey].push(d);
+  }
+
+  const merged = [];
+  for(const empKey in byEmp){
+    // 該員工的年假,依日期排序
+    const list = byEmp[empKey].sort((a,b)=>{
+      return (a.mon*100+a.day) - (b.mon*100+b.day);
+    });
+
+    let group = [list[0]];
+    for(let i=1; i<list.length; i++){
+      const prev = group[group.length-1];
+      const curr = list[i];
+      // 判斷是否連續:同月且 curr.day = prev.day + 1;或跨月(prev 是月底、curr 是次月 1 日)
+      const isConsecutive = isNextDay(prev, curr);
+      if(isConsecutive){
+        group.push(curr);
+      }else{
+        merged.push(makeMergedDraft(group));
+        group = [curr];
+      }
+    }
+    if(group.length) merged.push(makeMergedDraft(group));
+  }
+
+  // 合併結果 + 其他草稿,重新排序
+  const all = [...merged, ...otherDrafts];
+  all.sort((a,b)=>{
+    const oa = a.mon*100+a.day, ob = b.mon*100+b.day;
+    if(oa !== ob) return oa - ob;
+    return TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
+  });
+  return all;
+}
+
+// 判斷兩張草稿的日期是否連續(curr 在 prev 的下一天)
+function isNextDay(prev, curr){
+  // 用 Date 物件計算(以民國年之外的常數年即可,只求日期差)
+  const dPrev = new Date(2000, prev.mon-1, prev.day);
+  const dCurr = new Date(2000, curr.mon-1, curr.day);
+  const diff = (dCurr - dPrev) / (1000*60*60*24);
+  return diff === 1;
+}
+
+// 把連續的多張草稿合併為一張(起=第一天、迄=最後一天)
+function makeMergedDraft(group){
+  if(group.length === 1) return group[0];
+  const first = group[0];
+  const last  = group[group.length-1];
+  return {
+    ...first,
+    dayKey: first.dayKey,       // 保留起日 key
+    mon: first.mon,
+    day: first.day,
+    endMon: last.mon,           // 新增:迄日資訊
+    endDay: last.day,
+    endDayKey: last.dayKey,
+    mergedCount: group.length,  // 合併了幾天
+    sourceCode: `年 × ${group.length}日`
+  };
 }
 
 /* =========================================================
@@ -544,6 +698,10 @@ function runBatchScan(){
   const drafts = scanSchedule(opts);
   BATCH_DRAFTS = drafts;
   renderDrafts();
+  // 同步到雲端(其他裝置立刻看到)
+  if(typeof syncBatchDraftsToCloud === 'function'){
+    syncBatchDraftsToCloud();
+  }
 }
 
 function renderDrafts(){
@@ -562,14 +720,43 @@ function renderDrafts(){
   }
 
   const rows = BATCH_DRAFTS.map((d,i)=>{
-    const sh = d.shift;
     const isOT = d.type==='ot';
+    const isMulti = d.type==='multiLeave';
+
+    // === 多筆合寫的請假單(四段式)===
+    if(isMulti){
+      const segLines = d.segments.map(s => {
+        const range = (s.startMon===s.endMon && s.startDay===s.endDay)
+          ? `${s.startMon}/${s.startDay}`
+          : `${s.startMon}/${s.startDay}–${s.endDay}`;
+        return range;
+      }).join(', ');
+      return `
+    <div class="draft-row multi">
+      <span class="dr-no">${i+1}</span>
+      <span class="dr-date multi">${d.segments.length}段</span>
+      <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
+      <span class="dr-type lv">合寫請假</span>
+      <span class="dr-detail multi-days" title="${segLines}">${segLines}</span>
+      <span class="dr-time" style="color:var(--ink-soft);font-size:12px">
+        合寫 ${d.segments.length} 段
+      </span>
+      <button class="dr-split" onclick="splitMultiDraft(${i})" title="拆成一天一張">拆開</button>
+      <button class="dr-del" onclick="removeDraft(${i})" title="刪除">✕</button>
+    </div>`;
+    }
+
+    // === 一般單張(舊版邏輯)===
+    const sh = d.shift;
     const typeLabel = isOT ? '加班單' : '請假單';
     const detailLabel = isOT ? (d.comp==='加班費'?'加班費':'補休') : (d.reason||'特休假');
+    const dateLabel = d.mergedCount
+      ? `${d.mon}/${d.day}–${d.endMon===d.mon?'':d.endMon+'/'}${d.endDay}`
+      : `${d.mon}/${d.day}`;
     return `
     <div class="draft-row">
       <span class="dr-no">${i+1}</span>
-      <span class="dr-date">${d.mon}/${d.day}</span>
+      <span class="dr-date">${dateLabel}</span>
       <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
       <span class="dr-type ${isOT?'ot':'lv'}">${typeLabel}</span>
       <span class="dr-detail">${detailLabel}</span>
@@ -629,37 +816,138 @@ function renderExistingPreview(){
 function updateDraft(idx, field, value){
   const d = BATCH_DRAFTS[idx]; if(!d) return;
   d.shift = { ...d.shift, [field]: value };
+  // 同步到雲端
+  if(typeof syncUpdateDraft === 'function' && d._cloudId){
+    syncUpdateDraft(d._cloudId, { shift: d.shift });
+  }
 }
 
 function removeDraft(idx){
+  const d = BATCH_DRAFTS[idx];
+  const cloudId = d?._cloudId;
   BATCH_DRAFTS.splice(idx,1);
   renderDrafts();
+  // 同步到雲端
+  if(typeof syncDeleteDraft === 'function' && cloudId){
+    syncDeleteDraft(cloudId);
+  }
 }
 
 function clearDrafts(){
   if(BATCH_DRAFTS.length && !confirm('確定清空批次草稿？')) return;
+  const ids = BATCH_DRAFTS.map(d => d._cloudId).filter(Boolean);
   BATCH_DRAFTS = [];
   renderDrafts();
+  // 逐一從雲端刪除
+  if(typeof syncDeleteDraft === 'function'){
+    ids.forEach(id => syncDeleteDraft(id));
+  }
+}
+
+// 把一筆四段式草稿拆回多筆單獨草稿(每段變成一筆)
+function splitMultiDraft(idx){
+  const d = BATCH_DRAFTS[idx];
+  if(!d || d.type !== 'multiLeave') return;
+  // 每段展開為一筆單獨的請假草稿
+  const expanded = d.segments.map(s => {
+    const isRange = !(s.startMon===s.endMon && s.startDay===s.endDay);
+    return {
+      empKey: d.empKey,
+      dayKey: `${s.startMon}/${s.startDay}`,
+      mon: s.startMon,
+      day: s.startDay,
+      type: 'leave',
+      reason: s.reason || '特休假',
+      shift: s.shift,
+      sourceCode: isRange ? `年 × ${daysBetween(s.startMon, s.startDay, s.endMon, s.endDay)}日` : '年',
+      // 若為多天保留 endDay
+      ...(isRange ? {
+        endMon: s.endMon,
+        endDay: s.endDay,
+        endDayKey: `${s.endMon}/${s.endDay}`,
+        mergedCount: daysBetween(s.startMon, s.startDay, s.endMon, s.endDay)
+      } : {})
+    };
+  });
+  const cloudId = d._cloudId;
+  BATCH_DRAFTS.splice(idx, 1, ...expanded);
+  // 重新排序
+  BATCH_DRAFTS.sort((a,b)=>{
+    const oa = a.mon*100+a.day, ob = b.mon*100+b.day;
+    if(oa !== ob) return oa - ob;
+    return TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
+  });
+  renderDrafts();
+  // 雲端同步:刪掉舊那筆、重新加入拆開的
+  if(typeof syncDeleteDraft === 'function' && cloudId){
+    syncDeleteDraft(cloudId);
+  }
+  if(typeof syncBatchDraftsToCloud === 'function'){
+    syncBatchDraftsToCloud();
+  }
+}
+
+function daysBetween(sMon, sDay, eMon, eDay){
+  const a = new Date(2000, sMon-1, sDay);
+  const b = new Date(2000, eMon-1, eDay);
+  return Math.round((b - a) / (1000*60*60*24)) + 1;
 }
 
 // 把所有草稿一次加進列印清單
-function addAllDraftsToPrintList(){
-  for(const d of BATCH_DRAFTS){
-    const html = renderDraftAsForm(d);
+async function addAllDraftsToPrintList(){
+  const items = [...BATCH_DRAFTS];    // 複製一份
+  const batchIds = items.map(d => d._cloudId).filter(Boolean);
+
+  const makeLabel = (d) => {
+    if(d.type==='multiLeave'){
+      return `${fullName(d.empKey)}｜${rocY()}年 · 請假單(${d.segments.length}段合寫)`;
+    }
     const kind = d.type==='ot' ? '加班單' : '請假單';
-    const label = `${fullName(d.empKey)}｜${rocY()}年${d.mon}月${d.day}日｜${kind}`;
-    PRINT_LIST.push({ html, label });
+    return `${fullName(d.empKey)}｜${rocY()}年${d.mon}月${d.day}日｜${kind}`;
+  };
+
+  // 本機更新
+  for(const d of items){
+    const html = renderDraftAsForm(d);
+    PRINT_LIST.push({ html, label: makeLabel(d) });
   }
-  const n = BATCH_DRAFTS.length;
+  const n = items.length;
   BATCH_DRAFTS = [];
-  // 切到既有的列印清單畫面
   renderStage();
-  // 提示
   setTimeout(()=>alert(`已加入 ${n} 張到列印清單`), 50);
+
+  // 雲端同步:每張以 print stage 新增,並刪除 batch 版
+  if(typeof syncAddToPrintList === 'function'){
+    for(let i=0; i<items.length; i++){
+      const d = items[i];
+      await syncAddToPrintList(d, makeLabel(d));
+    }
+    // 刪除批次版
+    for(const id of batchIds){
+      if(typeof syncDeleteDraft === 'function') await syncDeleteDraft(id);
+    }
+  }
+}
+
+// 從列印清單移除(修改原有的 removeItem 加上雲端同步)
+const _origRemoveItem = typeof removeItem === 'function' ? removeItem : null;
+function removeItem(idx){
+  const item = PRINT_LIST[idx];
+  const cloudId = item?._cloudId;
+  PRINT_LIST.splice(idx, 1);
+  renderStage();
+  if(typeof syncDeleteDraft === 'function' && cloudId){
+    syncDeleteDraft(cloudId);
+  }
 }
 
 // 把單張草稿渲染成假單 HTML（不透過 renderDynFields，直接組欄位再呼叫 buildLeave/buildOT）
 function renderDraftAsForm(d){
+  // 多段式請假單:直接吃 draft 物件,不用透過 val()
+  if(d.type === 'multiLeave'){
+    return buildMultiLeave(d);
+  }
+
   // 暫存 state，用完復原
   const backup = { empName:state.empName, dayKey:state.dayKey, month:state.month, formType:state.formType };
   state.empName = d.empKey;
@@ -675,23 +963,36 @@ function renderDraftAsForm(d){
 
   let html='';
   if(d.type==='leave'){
-    // 算共計（沿用扣 1 小時休息的規則，同 calcLeaveTotal）
-    const M=d.mon, sd=d.day, ed=d.day;
-    const start = new Date(2000, M-1, sd, +sH, +sM);
-    let end = new Date(2000, M-1, ed, +eH, +eM);
-    let diffMin = (end-start)/60000; if(diffMin<0) diffMin+=1440;
-    if(diffMin>300) diffMin-=60;
-    const totalMin = Math.round(diffMin);
-    const days = Math.floor(totalMin/480);
-    const remMin = totalMin - days*480;
-    const hrs = Math.floor(remMin/60), mins = remMin%60;
+    // 合併過的年假:起=第一天、迄=最後一天;共計依合併天數
+    const endDay = d.endDay || d.day;
+    const endMon = d.endMon || d.mon;
+    const M=d.mon;
+
+    let days, hrs, mins;
+    if(d.mergedCount && d.mergedCount > 1){
+      // 合併多天的年假:每天 8 小時 = mergedCount 日
+      days = d.mergedCount;
+      hrs = 0;
+      mins = 0;
+    }else{
+      // 單日:沿用扣 1 小時休息的規則
+      const start = new Date(2000, M-1, d.day, +sH, +sM);
+      let end = new Date(2000, endMon-1, endDay, +eH, +eM);
+      let diffMin = (end-start)/60000; if(diffMin<0) diffMin+=1440;
+      if(diffMin>300) diffMin-=60;
+      const totalMin = Math.round(diffMin);
+      days = Math.floor(totalMin/480);
+      const remMin = totalMin - days*480;
+      hrs = Math.floor(remMin/60);
+      mins = remMin%60;
+    }
 
     tmp.innerHTML = `
       <input id="f_title" value="${deptOf(d.empKey)}">
       <input id="f_startDay" value="${d.day}">
       <input id="f_sh" value="${+sH}"><input id="f_sm" value="${+sM}">
       <input id="f_eh" value="${+eH}"><input id="f_em" value="${+eM}">
-      <input id="f_endDay" value="${d.day}">
+      <input id="f_endDay" value="${endDay}">
       <select id="f_reason"><option selected>${d.reason||'特休假'}</option></select>
       <input id="f_otherReason" value="">
       <input id="f_days" value="${days||''}"><input id="f_hrs" value="${hrs||''}"><input id="f_mins" value="${mins||''}">
@@ -907,6 +1208,21 @@ function generate(){
   const label = `${empName()}｜${rocY()}年${mon()}月${currentDay()}日｜${kind}`;
   PRINT_LIST.push({html:unit, label});
   renderStage();
+
+  // 同步到雲端(手動開單也存,供多裝置同步)
+  if(typeof syncAddToPrintList === 'function' && state.empName && state.dayKey){
+    const type = state.formType==='leave' ? 'leave' : state.formType==='ot' ? 'ot' : 'miss';
+    const draft = {
+      empKey: state.empName,
+      dayKey: state.dayKey,
+      mon: state.month,
+      day: currentDay(),
+      type,
+      shift: currentShift() || effectiveShift() || { start:'', end:'' },
+      sourceCode: currentCode()
+    };
+    syncAddToPrintList(draft, label);
+  }
 }
 
 // 渲染右側：上方清單管理 + 下方 A4 分頁預覽
@@ -955,7 +1271,7 @@ function renderStage(){
     <div class="sheet-wrap">${pages}</div>`;
 }
 
-function removeItem(i){ PRINT_LIST.splice(i,1); renderStage(); }
+// removeItem 已在雲端同步區塊重新定義(含 Firestore 刪除)
 function moveItem(i,dir){
   const j=i+dir; if(j<0||j>=PRINT_LIST.length) return;
   [PRINT_LIST[i],PRINT_LIST[j]]=[PRINT_LIST[j],PRINT_LIST[i]];
@@ -963,7 +1279,11 @@ function moveItem(i,dir){
 }
 function clearList(){
   if(PRINT_LIST.length && !confirm('確定清空列印清單？')) return;
+  const ids = PRINT_LIST.map(it => it._cloudId).filter(Boolean);
   PRINT_LIST=[]; renderStage();
+  if(typeof syncDeleteDraft === 'function'){
+    ids.forEach(id => syncDeleteDraft(id));
+  }
 }
 
 /* ---------- 請假單 ---------- */
@@ -1022,6 +1342,128 @@ function buildLeave(){
     </table>
   </div>`;
 }
+
+/* ---------- 多段式請假單(同人多筆合寫)---------- */
+function buildMultiLeave(draft){
+  const Y = rocY();
+  const empKey = draft.empKey;
+  const segments = draft.segments || [];
+  // 補足到 4 段(空白段給簽名時填)
+  const segs = [...segments];
+  while(segs.length < 4) segs.push(null);
+
+  // 每段:算 日/時/分 共計(扣 1 小時休息、8 小時=1 日)
+  function calcTotal(s){
+    if(!s) return {days:'', hrs:'', mins:''};
+    const sh = s.shift || {start:'', end:''};
+    const [sH,sM] = (sh.start||':').split(':');
+    const [eH,eM] = (sh.end||':').split(':');
+    const isRange = !(s.startMon===s.endMon && s.startDay===s.endDay);
+    let days, hrs, mins;
+    if(isRange){
+      // 多天(如 7/15-16)按天數算
+      days = daysBetween(s.startMon, s.startDay, s.endMon, s.endDay);
+      hrs = 0; mins = 0;
+    }else{
+      const start = new Date(2000, s.startMon-1, s.startDay, +sH||0, +sM||0);
+      let end = new Date(2000, s.endMon-1, s.endDay, +eH||0, +eM||0);
+      let diffMin = (end-start)/60000; if(diffMin<0) diffMin+=1440;
+      if(diffMin>300) diffMin-=60;
+      const totalMin = Math.round(diffMin);
+      days = Math.floor(totalMin/480);
+      const remMin = totalMin - days*480;
+      hrs = Math.floor(remMin/60); mins = remMin%60;
+    }
+    return {days, hrs, mins};
+  }
+
+  function segRow(s, idx){
+    if(!s){
+      // 空白段 — 保留欄位讓人手寫
+      return `
+      <tr class="ml-daterow" style="height:56px">
+        <td class="lb">日期</td>
+        <td colspan="3" class="editable">
+          自 ${Y} 年 　 月 　 日 　 時 　 分起<br>
+          至 ${Y} 年 　 月 　 日 　 時 　 分止
+        </td>
+        <td class="lb">共計</td>
+        <td class="editable">　 日 　 時 　 分</td>
+      </tr>
+      <tr style="height:44px">
+        <td class="lb">請假事由</td>
+        <td colspan="5" class="ck editable" style="line-height:1.9">
+          <span class="ckbox">□</span>事假　　<span class="ckbox">□</span>病假　　<span class="ckbox">□</span>特休假　　<span class="ckbox">□</span>產假<br>
+          <span class="ckbox">□</span>婚假　　<span class="ckbox">□</span>喪假　　<span class="ckbox">□</span>其他
+        </td>
+      </tr>
+      <tr style="height:32px">
+        <td class="lb">備註</td>
+        <td colspan="5" class="editable"></td>
+      </tr>`;
+    }
+    const {days, hrs, mins} = calcTotal(s);
+    const reason = s.reason || '特休假';
+    const ck = r => `<span class="ckbox">${r===reason?'■':'□'}</span>${r}`;
+    const sh = s.shift || {start:'', end:''};
+    const [sH,sM] = (sh.start||':').split(':').map(x => x===''?'　':+x);
+    const [eH,eM] = (sh.end||':').split(':').map(x => x===''?'　':+x);
+    return `
+    <tr class="ml-daterow" style="height:56px">
+      <td class="lb">日期</td>
+      <td colspan="3" class="editable">
+        自 ${Y} 年 ${s.startMon} 月 ${s.startDay} 日 ${sH} 時 ${sM} 分起<br>
+        至 ${Y} 年 ${s.endMon} 月 ${s.endDay} 日 ${eH} 時 ${eM} 分止
+      </td>
+      <td class="lb">共計</td>
+      <td class="editable">${days||'　'} 日 ${hrs||'　'} 時 ${mins||'　'} 分</td>
+    </tr>
+    <tr style="height:44px">
+      <td class="lb">請假事由</td>
+      <td colspan="5" class="ck editable" style="line-height:1.9">
+        ${ck('事假')}　　${ck('病假')}　　${ck('特休假')}　　${ck('產假')}<br>
+        ${ck('婚假')}　　${ck('喪假')}　　${ck('其他')} ${s.other||''}
+      </td>
+    </tr>
+    <tr style="height:32px">
+      <td class="lb">備註</td>
+      <td colspan="5" class="editable">${s.note||''}</td>
+    </tr>`;
+  }
+
+  return `
+  <div class="form-unit v2 multi-leave">
+    <div class="fu-head">
+      <img class="fu-logo" src="${LOGO_SRC}" alt="">
+      <div class="fu-co">柔美飯店</div>
+      <div class="fu-nm">請　假　單</div>
+      <div class="fu-apply">申請日期：　${Y}　年　${nowMonth()}　月　${nowDay()}　日</div>
+    </div>
+    <table class="ft v2 multi">
+      <tr style="height:42px">
+        <td class="lb" style="width:80px">姓名</td>
+        <td class="editable big-name" style="width:38%">${fullName(empKey)}</td>
+        <td class="lb" style="width:70px">職稱</td>
+        <td class="editable big-name">${deptOf(empKey)}</td>
+        <td colspan="2" style="border:none"></td>
+      </tr>
+      ${segs.map(segRow).join('')}
+      <tr style="height:40px">
+        <td class="lb lb-sm">職務代理人</td>
+        <td class="editable" colspan="2"></td>
+        <td class="lb lb-sm">職務代理人簽名</td>
+        <td class="editable" colspan="2"></td>
+      </tr>
+      <tr class="sign-row">
+        <td>副總經理：</td><td colspan="2">權責主管：</td><td colspan="3">申請人：</td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+function nowMonth(){ return new Date().getMonth()+1; }
+function nowDay(){ return new Date().getDate(); }
+
 
 /* ---------- 加班單 ---------- */
 function buildOT(){
@@ -1147,3 +1589,263 @@ function initRoster(){
   }
 }
 document.addEventListener('DOMContentLoaded', initRoster);
+
+/* =========================================================
+   雲端同步(CloudSync)
+   ---------------------------------------------------------
+   把三件事接到 Firestore:
+     1. 班表 URL / 民國年 / 月份 → settings/main
+     2. 批次草稿 → drafts/  (stage: 'batch')
+     3. 列印清單 → drafts/  (stage: 'print')
+
+   運作策略:
+   - 本機的 BATCH_DRAFTS / PRINT_LIST 陣列作為即時顯示的來源
+   - 每次變更後,同步一份到雲端(增/改/刪)
+   - 雲端有變化(其他裝置修改)時,更新本機並重新渲染
+   - 用旗標 SYNCING 避免「雲端 → 本機 → 雲端」的無窮迴圈
+   ========================================================= */
+
+let CLOUD_READY = false;       // Cloud 是否已就緒
+let SYNC_ENABLED = false;      // 目前是否啟用同步(登入後才啟用)
+let SYNCING = false;           // 正在從雲端更新本機,避免回寫
+let UNSUB_DRAFTS = null;       // Firestore 監聽解除函式
+
+// 頁面通知 Cloud 準備好了(在 index.html 裡的登入監聽會派發此事件)
+window.addEventListener('cloudReady', async (e) => {
+  if(!window.Cloud){ console.warn('[CloudSync] Cloud 未載入'); return; }
+  CLOUD_READY = true;
+  SYNC_ENABLED = true;
+  console.log('[CloudSync] 啟動同步');
+  await bootstrapCloud();
+});
+
+async function bootstrapCloud(){
+  try{
+    // 1. 載入系統設定(班表 URL / 民國年 / 月份)
+    const s = await Cloud.loadSettings();
+    if(s.scheduleUrl){
+      const gsInput = document.getElementById('gsUrl');
+      if(gsInput) gsInput.value = s.scheduleUrl;
+    }
+    if(s.currentRocYear){
+      const ry = document.getElementById('rocYear');
+      if(ry) ry.value = s.currentRocYear;
+    }
+    if(s.currentMonth){
+      const m = document.getElementById('month');
+      if(m) m.value = s.currentMonth;
+    }
+    // 載入最近使用的分頁
+    if(s.recentUrls && Array.isArray(s.recentUrls)){
+      RECENT_URLS = s.recentUrls;
+      renderRecentUrls();
+    }
+
+    // 2. 開始監聽雲端草稿變化(即時同步)
+    UNSUB_DRAFTS = Cloud.watchDrafts(cloudDrafts => {
+      SYNCING = true;
+      // 依 stage 分回本機兩個陣列
+      const batchList = cloudDrafts.filter(d => d.stage === 'batch');
+      const printList = cloudDrafts.filter(d => d.stage === 'print');
+
+      // 批次草稿:直接用雲端資料覆寫本機
+      BATCH_DRAFTS = batchList.map(d => ({
+        _cloudId: d.id,    // 記住 Firestore 文件 ID,更新/刪除時用
+        empKey: d.empKey,
+        dayKey: d.dayKey,
+        mon: d.mon,
+        day: d.day,
+        type: d.type,
+        reason: d.reason,
+        comp: d.comp,
+        shift: d.shift,
+        sourceCode: d.sourceCode,
+        endMon: d.endMon,
+        endDay: d.endDay,
+        endDayKey: d.endDayKey,
+        mergedCount: d.mergedCount,
+        segments: d.segments
+      }));
+
+      // 列印清單:雲端存的是「假單原始資料」,本機需要 html 版
+      // 重新渲染每一張假單的 HTML(用當時的規則產生)
+      PRINT_LIST = printList.map(d => ({
+        _cloudId: d.id,
+        label: d.label,
+        html: renderDraftAsForm({
+          empKey: d.empKey, dayKey: d.dayKey, mon: d.mon, day: d.day,
+          type: d.type, reason: d.reason, comp: d.comp, shift: d.shift,
+          sourceCode: d.sourceCode
+        })
+      }));
+
+      // 決定該顯示什麼畫面
+      if(BATCH_DRAFTS.length > 0){
+        renderDrafts();       // 有批次草稿 → 顯示批次清單
+      }else if(PRINT_LIST.length > 0){
+        renderStage();        // 只有列印清單 → 顯示列印預覽
+      }
+      SYNCING = false;
+    });
+
+    console.log('[CloudSync] 初始化完成');
+  }catch(err){
+    console.error('[CloudSync] 初始化失敗:', err);
+  }
+}
+
+/* ---------- 同步輔助函式 ---------- */
+
+// 將本機的批次草稿全部寫進雲端(掃描完成時呼叫)
+async function syncBatchDraftsToCloud(){
+  if(!SYNC_ENABLED || SYNCING) return;
+  try{
+    // 為避免混亂,掃描時先清空雲端現有 batch,再全部重加
+    // (簡化做法,以後可改為 diff)
+    const oldBatchIds = BATCH_DRAFTS.map(d => d._cloudId).filter(Boolean);
+    for(const id of oldBatchIds){
+      await Cloud.deleteDraft(id).catch(()=>{});
+    }
+    for(const d of BATCH_DRAFTS){
+      const draftData = {
+        stage: 'batch',
+        empKey: d.empKey, dayKey: d.dayKey, mon: d.mon, day: d.day,
+        type: d.type,
+        reason: d.reason || null,
+        comp: d.comp || null,
+        shift: d.shift || null,
+        sourceCode: d.sourceCode || '',
+        // 合併過的年假額外欄位
+        endMon: d.endMon || null,
+        endDay: d.endDay || null,
+        endDayKey: d.endDayKey || null,
+        mergedCount: d.mergedCount || null,
+        // 多段式的段落資料
+        segments: d.segments || null
+      };
+      await Cloud.addDraft(draftData);
+    }
+  }catch(err){
+    console.error('[CloudSync] 同步批次草稿失敗:', err);
+  }
+}
+
+// 更新單張草稿(改時間時呼叫)
+async function syncUpdateDraft(cloudId, patch){
+  if(!SYNC_ENABLED || SYNCING || !cloudId) return;
+  try{ await Cloud.updateDraft(cloudId, patch); }
+  catch(err){ console.error('[CloudSync] 更新失敗:', err); }
+}
+
+// 刪除單張草稿
+async function syncDeleteDraft(cloudId){
+  if(!SYNC_ENABLED || SYNCING || !cloudId) return;
+  try{ await Cloud.deleteDraft(cloudId); }
+  catch(err){ console.error('[CloudSync] 刪除失敗:', err); }
+}
+
+// 新增到列印清單(整批加入時呼叫)
+async function syncAddToPrintList(draft, label){
+  if(!SYNC_ENABLED || SYNCING) return null;
+  try{
+    return await Cloud.addDraft({
+      stage: 'print',
+      label,
+      empKey: draft.empKey, dayKey: draft.dayKey, mon: draft.mon, day: draft.day,
+      type: draft.type,
+      reason: draft.reason || null,
+      comp: draft.comp || null,
+      shift: draft.shift,
+      sourceCode: draft.sourceCode || ''
+    });
+  }catch(err){
+    console.error('[CloudSync] 加入列印清單失敗:', err);
+    return null;
+  }
+}
+
+// 儲存系統設定(班表 URL / 月份等)
+async function syncSaveSettings(patch){
+  if(!SYNC_ENABLED) return;
+  try{ await Cloud.saveSettings(patch); }
+  catch(err){ console.error('[CloudSync] 儲存設定失敗:', err); }
+}
+
+/* =========================================================
+   最近使用的班表分頁(記憶多個 gid,方便切換月份)
+   ========================================================= */
+let RECENT_URLS = [];   // 最多存 6 個
+
+// 從 URL 抽出可讀的分頁標籤(通常是 gid=xxx 之後的月份文字)
+function urlLabel(url){
+  // 從 URL 取月份提示:通常網址有 #gid=xxx,gid 是分頁 ID,無法看出月份
+  // 折衷:顯示前 4 位 gid + 加入時間
+  const gm = url.match(/[#&?]gid=(\d+)/);
+  return gm ? `gid ${gm[1].slice(0,6)}` : `分頁`;
+}
+
+// 新增到最近清單(避免重複)
+function addRecentUrl(url){
+  if(!url) return;
+  // 去除同一 gid 的舊項
+  const gm = url.match(/[#&?]gid=(\d+)/);
+  const gid = gm ? gm[1] : null;
+  RECENT_URLS = RECENT_URLS.filter(u => {
+    const g = u.url.match(/[#&?]gid=(\d+)/);
+    return !gid || (g && g[1] !== gid);
+  });
+  // 插到最前面
+  RECENT_URLS.unshift({ url, label: urlLabel(url), addedAt: Date.now() });
+  // 最多存 6 個
+  if(RECENT_URLS.length > 6) RECENT_URLS = RECENT_URLS.slice(0, 6);
+  renderRecentUrls();
+  // 同步到雲端
+  if(typeof syncSaveSettings === 'function'){
+    syncSaveSettings({ recentUrls: RECENT_URLS });
+  }
+}
+
+// 從最近清單移除
+function removeRecentUrl(idx){
+  RECENT_URLS.splice(idx, 1);
+  renderRecentUrls();
+  if(typeof syncSaveSettings === 'function'){
+    syncSaveSettings({ recentUrls: RECENT_URLS });
+  }
+}
+
+// 點按快捷鈕:填入 URL 並讀取
+async function useRecentUrl(idx){
+  const item = RECENT_URLS[idx];
+  if(!item) return;
+  document.getElementById('gsUrl').value = item.url;
+  await loadFromGoogleSheet();
+}
+
+// 讓使用者為分頁命名(例如 "7月"、"8月")
+function renameRecentUrl(idx){
+  const item = RECENT_URLS[idx];
+  if(!item) return;
+  const newLabel = prompt('為這個分頁命名(例如:7月、8月):', item.label);
+  if(newLabel && newLabel.trim()){
+    item.label = newLabel.trim();
+    renderRecentUrls();
+    if(typeof syncSaveSettings === 'function'){
+      syncSaveSettings({ recentUrls: RECENT_URLS });
+    }
+  }
+}
+
+function renderRecentUrls(){
+  const box = document.getElementById('gsHistory');
+  const list = document.getElementById('gsHistoryList');
+  if(!box || !list) return;
+  if(!RECENT_URLS.length){ box.style.display='none'; return; }
+  box.style.display = 'block';
+  list.innerHTML = RECENT_URLS.map((it, i) => `
+    <span class="gs-tab" onclick="useRecentUrl(${i})" ondblclick="event.stopPropagation();renameRecentUrl(${i})" title="點擊切換此分頁 · 雙擊改名">
+      ${it.label}
+      <button class="gs-tab-del" onclick="event.stopPropagation();removeRecentUrl(${i})" title="移除">✕</button>
+    </span>
+  `).join('');
+}

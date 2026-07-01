@@ -244,33 +244,63 @@
   .ub-logout:hover{background:#fff;color:var(--danger);border-color:var(--danger)}
   @media print{.user-bar{display:none!important}}
 
+  /* Google Sheet 分頁快捷鈕 */
+  .gs-tab{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:5px 10px;background:#eef4fa;border:1px solid var(--line);
+    border-radius:6px;font-size:12px;color:var(--brand-dark);
+    cursor:pointer;font-weight:600;transition:.12s;
+  }
+  .gs-tab:hover{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .gs-tab .gs-tab-del{
+    margin-left:2px;padding:0 3px;font-size:11px;opacity:.5;
+    background:transparent;border:none;color:inherit;cursor:pointer;
+  }
+  .gs-tab:hover .gs-tab-del{opacity:.9}
+
   /* 列印清單管理區 */
   .queue-box{max-width:820px;margin:0 auto 22px;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:var(--shadow)}
   .queue-hd{background:#f7fafc;padding:9px 14px;font-size:11.5px;font-weight:700;color:var(--ink-soft);border-bottom:1px solid var(--line-soft)}
 
   /* 批次草稿清單 */
-  .drafts-box{max-width:960px;margin:0 auto 22px;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:var(--shadow)}
-  .drafts-hd{background:#fff9e8;padding:11px 16px;border-bottom:1px solid var(--line-soft);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-  .drafts-list{max-height:65vh;overflow-y:auto}
-  .draft-row{display:grid;grid-template-columns:28px 52px 130px 68px 76px 200px 110px 32px;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line-soft);font-size:13px}
+  .drafts-box{max-width:1400px;margin:0 auto 22px;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:var(--shadow)}
+  .drafts-hd{background:#fff9e8;padding:13px 20px;border-bottom:1px solid var(--line-soft);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:14px}
+  .drafts-list{max-height:70vh;overflow-y:auto}
+  .draft-row{display:grid;grid-template-columns:32px 62px 170px 78px 90px 260px 130px 36px;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line-soft);font-size:14.5px}
   .draft-row:last-child{border-bottom:none}
   .draft-row:hover{background:#fafcfe}
-  .dr-no{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
-  .dr-date{font-weight:700;color:var(--brand-dark);font-size:13.5px}
-  .dr-emp{color:var(--ink);font-weight:600}
-  .dr-emp small{color:var(--ink-soft);font-weight:400;font-size:11px}
-  .dr-type{text-align:center;padding:3px 6px;border-radius:5px;font-size:11.5px;font-weight:700;letter-spacing:1px}
+  .dr-no{width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;font-size:13px;font-weight:700;display:grid;place-items:center}
+  .dr-date{font-weight:700;color:var(--brand-dark);font-size:15px}
+  .dr-emp{color:var(--ink);font-weight:600;font-size:14.5px}
+  .dr-emp small{color:var(--ink-soft);font-weight:400;font-size:12px;margin-left:2px}
+  .dr-type{text-align:center;padding:5px 8px;border-radius:6px;font-size:12.5px;font-weight:700;letter-spacing:1px}
   .dr-type.lv{background:#e6f3fb;color:#1f6e9e}
   .dr-type.ot{background:#fdecc7;color:#996208}
-  .dr-detail{font-size:12px;color:var(--ink-soft);font-weight:600}
-  .dr-time{display:flex;align-items:center;gap:4px;font-size:12px}
-  .dr-time input{width:82px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;font-size:12px}
-  .dr-src{font-size:10.5px;color:var(--ink-soft);background:#f4f6f9;padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap}
-  .dr-del{width:26px;height:26px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:var(--ink-soft);font-size:12px}
+  .dr-detail{font-size:13.5px;color:var(--ink-soft);font-weight:600}
+  .dr-time{display:flex;align-items:center;gap:6px;font-size:13.5px}
+  .dr-time input{width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:13.5px}
+  .dr-src{font-size:12px;color:var(--ink-soft);background:#f4f6f9;padding:5px 10px;border-radius:6px;text-align:center;white-space:nowrap}
+  .dr-del{width:30px;height:30px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;color:var(--ink-soft);font-size:13px}
   .dr-del:hover{border-color:var(--danger);color:var(--danger)}
-  @media(max-width:1000px){
-    .draft-row{grid-template-columns:24px 46px 1fr auto 32px;font-size:12px}
-    .dr-type,.dr-detail,.dr-time,.dr-src{grid-column:span 5;padding-left:82px;padding-top:2px}
+  .dr-split{padding:5px 10px;background:#fff;border:1px solid #d8a55a;color:#8a5a10;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:700;letter-spacing:1px}
+  .dr-split:hover{background:#fbe6c3}
+  .draft-row.multi{background:#fbf7ec;border-left:3px solid #d8a55a}
+  .dr-date.multi{background:#d8a55a;color:#fff;text-align:center;padding:4px 6px;border-radius:6px;font-weight:700;font-size:12px}
+  .dr-detail.multi-days{font-family:monospace;font-size:13px;color:#8a5a10;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+  /* 多段式假單版面 */
+  .form-unit.v2.multi-leave .fu-nm{font-size:22px;letter-spacing:8px}
+  table.ft.v2.multi td{padding:5px 8px;font-size:13.5px;line-height:1.55}
+  table.ft.v2.multi .ml-daterow td{border-bottom:1px solid #000}
+  table.ft.v2.multi .sign-row td{height:50px}
+  @media(max-width:1200px){
+    .drafts-box{max-width:none;margin:0 20px 22px}
+    .draft-row{grid-template-columns:28px 52px 1fr 68px 80px 220px 110px 32px;font-size:13px;padding:10px 14px}
+    .dr-src{font-size:11px}
+  }
+  @media(max-width:900px){
+    .draft-row{grid-template-columns:26px 46px 1fr auto 32px;font-size:12.5px}
+    .dr-type,.dr-detail,.dr-time,.dr-src{grid-column:span 5;padding-left:76px;padding-top:2px}
   }
   .qitem{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line-soft);font-size:13px}
   .qitem:last-child{border-bottom:none}
@@ -314,7 +344,13 @@
         <label class="fld">柔美班表 Google Sheet 連結</label>
         <input type="text" id="gsUrl" placeholder="貼上 https://docs.google.com/spreadsheets/...">
         <button class="btn btn-ghost" style="margin-top:8px" onclick="loadFromGoogleSheet()">讀取班表</button>
-        <div class="hint">貼上含當月班表的分頁連結（網址含 <b>#gid=</b> 的那一頁）。工具會依姓名自動抓出 10 位人員，並讀取表頭「月/日」對應日期。若讀不到，請確認共用設定為「知道連結的任何人 → 檢視者」。</div>
+
+        <div id="gsHistory" style="display:none;margin-top:10px">
+          <label class="fld" style="margin-top:0">最近使用的分頁</label>
+          <div id="gsHistoryList" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+
+        <div class="hint" style="margin-top:10px">貼上含當月班表的分頁連結（網址含 <b>#gid=</b> 的那一頁）。工具會自動記住最近使用的分頁,以後點快捷鈕即可切換月份。若讀不到,請確認共用設定為「知道連結的任何人 → 檢視者」。</div>
       </div>
 
       <div id="srcFile" style="display:none">
