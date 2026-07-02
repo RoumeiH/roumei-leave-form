@@ -864,7 +864,7 @@ function renderDrafts(){
     }
 
     // === 一般單張(舊版邏輯)===
-    const sh = d.shift;
+    const sh = d.shift || {};
     const typeLabel = isOT ? '加班單' : '請假單';
     const detailLabel = isOT ? (d.comp==='加班費'?'加班費':'補休') : (d.reason||'特休假');
     const dateLabel = d.mergedCount
