@@ -175,6 +175,12 @@
   </div>
 
   <div class="sec-hd">
+    <h2>👔 主管 <span class="cnt" id="cntSup">0</span></h2>
+    <button class="refresh" onclick="loadAll()">🔄 重新整理</button>
+  </div>
+  <div id="supList"></div>
+
+  <div class="sec-hd">
     <h2>⏳ 等待確認 <span class="cnt warn" id="cntPending">0</span></h2>
     <button class="refresh" onclick="loadAll()">🔄 重新整理</button>
   </div>
@@ -221,9 +227,13 @@
   }
 
   function render(data) {
-    const bs = data.bindings || [];
+    const all = data.bindings || [];
+    const sup = all.filter(b => b.role === 'supervisor');
+    const bs = all.filter(b => b.role !== 'supervisor');
     const pending = bs.filter(b => !b.confirmed);
     const confirmed = bs.filter(b => b.confirmed);
+    const supPending = sup.filter(b => !b.confirmed);
+    const supConfirmed = sup.filter(b => b.confirmed);
     const unbound = data.unbound || [];
 
     // 統計
@@ -234,14 +244,22 @@
     document.getElementById('cntPending').textContent = pending.length;
     document.getElementById('cntConfirmed').textContent = confirmed.length;
     document.getElementById('cntUnbound').textContent = unbound.length;
+    document.getElementById('cntSup').textContent = sup.length;
 
-    // 待確認
+    // 主管(待確認 + 已確認,一起列出)
+    const supAll = [...supPending, ...supConfirmed];
+    document.getElementById('supList').innerHTML =
+      supAll.length === 0
+        ? emptyBox('尚無主管綁定。請主管加 LINE 好友後,在綁定頁點「我是主管」送出。')
+        : `<div class="cards">${supAll.map(cardHtml).join('')}</div>`;
+
+    // 待確認(員工)
     document.getElementById('pendingList').innerHTML =
       pending.length === 0
         ? emptyBox('目前沒有待確認的綁定申請')
         : `<div class="cards">${pending.map(cardHtml).join('')}</div>`;
 
-    // 已確認
+    // 已確認(員工)
     document.getElementById('confirmedList').innerHTML =
       confirmed.length === 0
         ? emptyBox('尚無已完成綁定的員工')
@@ -274,7 +292,7 @@
       <div class="card ${cls}">
         ${avatar}
         <div class="info">
-          <div class="name">${b.fullName || '(未知)'}<small>${b.empKey ? '('+b.empKey+')' : ''}</small></div>
+          <div class="name">${b.fullName || '(未知)'}<small>${b.role === 'supervisor' ? ' · 主管' : (b.empKey ? '('+b.empKey+')' : '')}</small></div>
           <div class="meta">
             <div>部門:<b>${b.dept || '-'}</b></div>
             <div>LINE 顯示名:${b.lineName || '(未取得)'}</div>

@@ -81,6 +81,29 @@
   .msg.info{background:#e6f3fb;color:var(--brand-dark)}
 
   .loading{text-align:center;padding:40px 20px;color:var(--ink-soft)}
+
+  /* 主管入口 */
+  .sup-block{margin:22px 4px 0;padding-top:18px;border-top:1px dashed var(--line);text-align:center}
+  .sup-hint{font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;line-height:1.6}
+  .sup-toggle{
+    background:#fff;border:2px solid var(--accent);color:#8a5a10;
+    padding:11px 20px;border-radius:10px;font-size:14px;font-weight:800;
+    cursor:pointer;font-family:inherit;letter-spacing:1px;
+  }
+  .sup-toggle:active{transform:scale(.98)}
+  .sup-form{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+  .sup-form input{
+    width:100%;padding:13px 14px;border:2px solid var(--line);border-radius:10px;
+    font-size:15px;font-family:inherit;color:var(--ink);text-align:center;
+  }
+  .sup-form input:focus{outline:none;border-color:var(--accent)}
+  .sup-form .sup-submit{
+    width:100%;padding:14px;background:var(--accent);color:#3a2c08;
+    border:none;border-radius:10px;font-size:15px;font-weight:800;
+    cursor:pointer;font-family:inherit;letter-spacing:1px;
+  }
+  .sup-form .sup-submit:disabled{background:#e5d3ab;cursor:not-allowed}
+  .sup-form .sup-submit:active:not(:disabled){transform:scale(.98)}
 </style>
 </head>
 <body>
@@ -98,6 +121,16 @@
     綁定後,系統會透過 LINE 通知您簽核假單。
   </div>
   <div id="rosterList" class="loading">載入員工名單中...</div>
+
+  <!-- 主管入口:不在員工名單者 -->
+  <div class="sup-block" id="supBlock" style="display:none">
+    <div class="sup-hint">找不到您的名字?<br>若您是<b>主管</b>,請點下方按鈕。</div>
+    <button class="sup-toggle" onclick="showSupForm()">我是主管</button>
+    <div class="sup-form" id="supForm" style="display:none">
+      <input id="supName" type="text" placeholder="請輸入您的姓名" oninput="onSupNameInput()" maxlength="20">
+      <button class="sup-submit" id="supSubmitBtn" disabled onclick="submitSupBind()">確認送出(主管)</button>
+    </div>
+  </div>
 </div>
 
 <div class="bottom" id="bottomBar" style="display:none">
@@ -128,6 +161,7 @@
       rosterData = data.roster;
       renderRoster();
       document.getElementById('bottomBar').style.display = 'block';
+      document.getElementById('supBlock').style.display = 'block';
     } catch (err) {
       showMsg('err', '讀取員工名單失敗,請稍後再試。' + err.message);
     }
@@ -200,6 +234,51 @@
     document.getElementById('msgBox').innerHTML =
       `<div class="msg ${type}">${text}</div>`;
     window.scrollTo(0, 0);
+  }
+
+  /* ===== 主管綁定 ===== */
+  function showSupForm() {
+    // 展開主管姓名輸入,並取消員工選取
+    document.getElementById('supForm').style.display = 'flex';
+    selectedEmp = null;
+    document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '請先選擇姓名';
+    document.getElementById('supName').focus();
+  }
+
+  function onSupNameInput() {
+    const v = document.getElementById('supName').value.trim();
+    document.getElementById('supSubmitBtn').disabled = !v;
+  }
+
+  async function submitSupBind() {
+    const name = document.getElementById('supName').value.trim();
+    if (!name) return;
+    if (!confirm(`確定以「主管:${name}」送出綁定?\n\n綁定後將由管理者確認。`)) return;
+
+    const btn = document.getElementById('supSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '送出中...';
+
+    try {
+      const res = await fetch('/api/bind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineUserId, role: 'supervisor', supName: name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '送出失敗');
+
+      showMsg('ok', data.msg || '主管綁定申請已送出,等待管理者確認。');
+      document.getElementById('bottomBar').style.display = 'none';
+      document.getElementById('supBlock').style.display = 'none';
+      document.getElementById('rosterList').style.display = 'none';
+    } catch (err) {
+      showMsg('err', err.message);
+      btn.disabled = false;
+      btn.textContent = '確認送出(主管)';
+    }
   }
 </script>
 </body>
