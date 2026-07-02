@@ -69,6 +69,41 @@ function formatFormText(form) {
 async function createForm(formData) {
   const lineUserId = await findLineUserId(formData.empKey);
   if (!lineUserId) throw new Error(`${formData.empKey} 尚未綁定 LINE`);
+
+  // 檢查是否已有「同員工、同日期、同類型、pending 或已簽」的假單,避免重複建立
+  // 判斷 key: empKey + type + mon + day + endDay(有的話)
+  const existingSnap = await forms
+    .where('lineUserId', '==', lineUserId)
+    .where('empKey', '==', formData.empKey)
+    .where('type', '==', formData.type)
+    .where('mon', '==', formData.mon)
+    .where('day', '==', formData.day)
+    .get();
+
+  if (!existingSnap.empty) {
+    for (const doc of existingSnap.docs) {
+      const d = doc.data();
+      // 已完成的不算重複(可以重開)
+      if (d.status === 'completed' || d.status === 'archived') continue;
+      // 判斷結束日是否一致(針對合併/多段)
+      const endDayMatch = (d.endDay || null) === (formData.endDay || null);
+      const endMonMatch = (d.endMon || null) === (formData.endMon || null);
+      if (endDayMatch && endMonMatch) {
+        // 已存在相同假單 → 回傳既有 ID(不重複建立)
+        console.log(`[createForm] 重複假單跳過: ${formData.empKey} ${formData.mon}/${formData.day} ${formData.type}`);
+        // 更新內容以防有欄位變(例如時間微調)但保留原 ID/狀態
+        if (d.status === 'pending_employee') {
+          await forms.doc(doc.id).update({
+            ...formData,
+            lineUserId,
+            updatedAt: new Date(),
+          });
+        }
+        return doc.id;
+      }
+    }
+  }
+
   const docRef = await forms.add({
     ...formData,
     lineUserId,
