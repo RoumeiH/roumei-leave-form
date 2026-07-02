@@ -219,6 +219,9 @@ export default async function handler(req, res) {
           employeeSignedAt: d.employeeSignedAt?.toDate?.()?.toISOString() || null,
           lastPushAt: d.lastPushAt?.toDate?.()?.toISOString() || null,
           employeeSignatureData: d.employeeSignatureData ? '<has-signature>' : null,
+          supervisorSignatureData: d.supervisorSignatureData ? '<has-signature>' : null,
+          supervisorSignedAt: d.supervisorSignedAt?.toDate?.()?.toISOString() || null,
+          rejectedAt: d.rejectedAt?.toDate?.()?.toISOString() || null,
         });
       });
       return res.status(200).json({ forms: list });
