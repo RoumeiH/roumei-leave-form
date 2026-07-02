@@ -1032,60 +1032,98 @@ function draftToFormPayload(d){
 }
 
 // 推播單張到 LINE
+// 新流程:先建立這張假單(status=pending_employee),再推播該員工「所有」未簽假單
 async function pushOneToLine(idx){
   const d = BATCH_DRAFTS[idx];
   if(!d) return;
   const name = fullName(d.empKey);
-  if(!confirm(`確定推播「${name}」的假單到 LINE?\n對方會收到 LINE 訊息,點連結進去簽名。`)) return;
+  if(!confirm(`確定推播「${name}」的假單到 LINE?\n對方會收到 LINE 訊息,點連結進去簽名。\n\n(若該員工另有其他待簽假單,會一起提醒)`)) return;
 
   try{
-    const res = await fetch('/api/forms?action=create', {
+    // 1. 先建立假單(存資料庫,不推播)
+    const res1 = await fetch('/api/forms?action=create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(draftToFormPayload(d)),
     });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || '推播失敗');
-    alert(`✅ 已推播給 ${name}`);
-    // 推完可以選:刪掉這筆草稿(避免重推)
+    const data1 = await res1.json();
+    if(!res1.ok) throw new Error(data1.error || '建立失敗');
+
+    // 2. 推播該員工所有未簽的
+    const res2 = await fetch('/api/forms?action=push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empKey: d.empKey }),
+    });
+    const data2 = await res2.json();
+    if(!res2.ok) throw new Error(data2.error || '推播失敗');
+
+    alert(`✅ 已推播給 ${name}(共 ${data2.count} 張)`);
     removeDraft(idx);
   }catch(err){
     alert(`❌ 推播失敗: ${err.message}`);
   }
 }
 
-// 一鍵全部推播
+// 一鍵全部推播 - 全部建立 → 按員工分組推播
 async function pushAllToLine(){
   if(BATCH_DRAFTS.length === 0){ alert('沒有草稿可以推播'); return; }
-  if(!confirm(`確定要一次推播 ${BATCH_DRAFTS.length} 張假單到 LINE?\n\n每位員工會收到自己的假單通知,可以隨時簽名。`)) return;
+
+  // 依員工分組計算
+  const byEmp = {};
+  for(const d of BATCH_DRAFTS){
+    if(!byEmp[d.empKey]) byEmp[d.empKey] = 0;
+    byEmp[d.empKey]++;
+  }
+  const empCount = Object.keys(byEmp).length;
+  const empSummary = Object.entries(byEmp).map(([k,c])=>`  • ${fullName(k)}: ${c} 張`).join('\n');
+
+  if(!confirm(`確定要推播 ${BATCH_DRAFTS.length} 張假單?\n\n將發送給 ${empCount} 位員工(每人一則):\n${empSummary}\n\n(每位員工的所有待簽假單會合在同一則訊息)`)) return;
 
   const btn = event?.target;
   if(btn) btn.disabled = true;
 
   try{
+    // 1. 批次建立所有假單(不推播)
     const payload = { forms: BATCH_DRAFTS.map(draftToFormPayload) };
-    const res = await fetch('/api/forms?action=batch', {
+    const res1 = await fetch('/api/forms?action=batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || '推播失敗');
+    const data1 = await res1.json();
+    if(!res1.ok) throw new Error(data1.error || '建立失敗');
 
-    // 顯示結果
-    const okCount = data.okCount || 0;
-    const failCount = data.failCount || 0;
-    let msg = `✅ 成功推播 ${okCount} 張`;
-    if(failCount > 0){
-      msg += `\n❌ 失敗 ${failCount} 張:\n`;
-      const fails = (data.results || []).filter(r => !r.ok);
-      msg += fails.map(r => `• ${fullName(r.empKey)}: ${r.error}`).join('\n');
+    // 2. 一次推播所有員工(每人一則)
+    const res2 = await fetch('/api/forms?action=pushAll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data2 = await res2.json();
+    if(!res2.ok) throw new Error(data2.error || '推播失敗');
+
+    // 綜合結果
+    const buildOk = data1.okCount || 0;
+    const buildFail = data1.failCount || 0;
+    const pushOk = data2.okCount || 0;
+    const pushFail = data2.failCount || 0;
+
+    let msg = `✅ 假單建立 ${buildOk} / ${data1.total} 張\n`;
+    msg += `✅ LINE 已送達 ${pushOk} 位員工\n`;
+    if(buildFail > 0){
+      const buildFails = (data1.results || []).filter(r => !r.ok);
+      msg += `\n❌ 建立失敗 ${buildFail}:\n` + buildFails.map(r => `• ${fullName(r.empKey)}: ${r.error}`).join('\n');
+    }
+    if(pushFail > 0){
+      const pushFails = (data2.results || []).filter(r => !r.ok);
+      msg += `\n❌ 推播失敗 ${pushFail}:\n` + pushFails.map(r => `• ${fullName(r.empKey)}: ${r.error}`).join('\n');
     }
     alert(msg);
 
-    // 只清掉成功的
-    if(okCount > 0){
-      const failKeys = new Set((data.results||[]).filter(r => !r.ok).map(r => r.empKey));
+    // 清掉建立成功的
+    if(buildOk > 0){
+      const failKeys = new Set((data1.results||[]).filter(r => !r.ok).map(r => r.empKey));
       const remain = [];
       const toDelete = [];
       for(const d of BATCH_DRAFTS){
@@ -1094,7 +1132,6 @@ async function pushAllToLine(){
       }
       BATCH_DRAFTS = remain;
       renderDrafts();
-      // 從雲端清掉已推的
       if(typeof syncDeleteDraft === 'function'){
         for(const id of toDelete) syncDeleteDraft(id);
       }
