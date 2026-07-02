@@ -227,6 +227,12 @@
 
   .mini-note{font-size:11px;color:var(--ink-soft);background:#f7fafc;border-radius:7px;padding:8px 10px;margin-top:8px;line-height:1.5}
 
+  /* 未讀班表警告 */
+  .warn-note{
+    font-size:11.5px;color:#8a5a10;background:#fff8e6;border:1px solid #f0d488;
+    border-radius:7px;padding:9px 12px;margin:0 0 12px;line-height:1.55;font-weight:600;
+  }
+
   /* 使用者列 */
   .user-bar{
     display:flex;align-items:center;gap:8px;
@@ -409,10 +415,11 @@
     </div>
 
     <!-- 步驟2：選擇員工與日期（例外/手動） -->
-    <div class="section" id="step2" style="opacity:.4;pointer-events:none">
+    <div class="section" id="step2">
       <h2><span class="num">2</span>手動開單（例外處理）</h2>
+      <div id="noScheduleWarn" class="warn-note">⚠️ 目前未讀班表,無法批次自動掃描,建議先讀取班表</div>
       <label class="fld">員工</label>
-      <select id="empSelect" onchange="onEmpChange()"><option>請先載入班表</option></select>
+      <select id="empSelect" onchange="onEmpChange()"><option value="">— 請選擇員工 —</option></select>
 
       <label class="fld">當月份（民國年 / 月）</label>
       <div class="row2">

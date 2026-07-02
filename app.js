@@ -260,6 +260,9 @@ function parseScheduleRows(rows){
   buildEmployeeSelect();
   const s2=document.getElementById('step2'); s2.style.opacity=1; s2.style.pointerEvents='auto';
   const sb=document.getElementById('stepBatch'); if(sb){ sb.style.opacity=1; sb.style.pointerEvents='auto'; }
+  // 讀取成功 → 隱藏「未讀班表」警告
+  const warn = document.getElementById('noScheduleWarn');
+  if(warn) warn.style.display = 'none';
 }
 
 function buildEmployeeSelect(){
@@ -267,9 +270,10 @@ function buildEmployeeSelect(){
   sel.innerHTML = '<option value="">— 請選擇員工 —</option>';
   TARGET_NAMES.forEach(nm=>{
     if(SCHEDULE[nm]){
+      // 班表有讀到 → 正常顯示
       sel.innerHTML += `<option value="${nm}">${fullName(nm)}（${nm}）</option>`;
-    }else if(fixedShift(nm)){
-      // 不在班表但有固定工時 → 仍列出，標示為手動
+    }else{
+      // 班表沒讀到(或未載入) → 標示為手動,仍可選
       sel.innerHTML += `<option value="${nm}">${fullName(nm)}（手動）</option>`;
     }
   });
@@ -1675,13 +1679,11 @@ function buildMiss(){
    初始化：頁面載入時先列出「固定工時」人員（不需班表也能開單）
    ========================================================= */
 function initRoster(){
-  // 若名單中有固定工時的人，先放進選單並開放步驟2
-  const hasFixed = TARGET_NAMES.some(nm=>fixedShift(nm));
-  if(hasFixed){
-    buildEmployeeSelect();
-    const s2=document.getElementById('step2');
-    if(s2){ s2.style.opacity=1; s2.style.pointerEvents='auto'; }
-  }
+  // 頁面一載入就建立完整員工下拉、開放步驟 2
+  // 有讀班表的員工正常顯示,沒讀到的顯示「(手動)」
+  buildEmployeeSelect();
+  const s2 = document.getElementById('step2');
+  if(s2){ s2.style.opacity = 1; s2.style.pointerEvents = 'auto'; }
 }
 document.addEventListener('DOMContentLoaded', initRoster);
 
