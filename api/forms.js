@@ -265,6 +265,49 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, ...result });
       }
 
+      if (action === 'notifySupervisors') {
+        // 推播所有已確認主管:目前有幾張待主管簽核(員工已簽)
+        const supSnap = await bindings
+          .where('role', '==', 'supervisor')
+          .where('confirmed', '==', true)
+          .get();
+        if (supSnap.empty) {
+          return res.status(200).json({ ok: false, error: '目前沒有已確認的主管' });
+        }
+        const pendSnap = await forms.where('status', '==', 'employee_signed').get();
+        const count = pendSnap.size;
+        if (count === 0) {
+          return res.status(200).json({ ok: false, error: '目前沒有待主管簽核的假單' });
+        }
+        let okCount = 0;
+        for (const doc of supSnap.docs) {
+          const sup = doc.data();
+          const url = `${BASE_URL}/sup-sign.html?sup=${encodeURIComponent(sup.lineUserId)}`;
+          try {
+            await pushMessage(sup.lineUserId, [
+              {
+                type: 'text',
+                text: `👔 ${sup.fullName}您好\n\n目前有 ${count} 張假單已由員工簽名,待您簽核。\n請點下方按鈕查看並簽核。`,
+              },
+              {
+                type: 'template',
+                altText: `有 ${count} 張假單待您簽核`,
+                template: {
+                  type: 'buttons',
+                  title: '主管簽核',
+                  text: `共 ${count} 張待簽核`,
+                  actions: [{ type: 'uri', label: '查看並簽核', uri: url }],
+                },
+              },
+            ]);
+            okCount++;
+          } catch (e) {
+            console.warn('推播主管失敗:', e.message);
+          }
+        }
+        return res.status(200).json({ ok: true, count, supCount: okCount });
+      }
+
       if (action === 'pushAll') {
         const snap = await forms.where('status', '==', 'pending_employee').get();
         const byUser = {};
