@@ -806,6 +806,24 @@ function renderDrafts(){
     });
   }
 
+  // 預先算出「可合併」的錨點:同員工 + 同假別的「單張請假」≥2 張時,
+  // 在日期最早那一張顯示「合併」鈕(避免每一列都出現重複按鈕)
+  const mergeAnchors = new Set();
+  {
+    const groups = {};
+    BATCH_DRAFTS.forEach((d, i) => {
+      if(d.type !== 'leave') return;
+      const key = d.empKey + '|' + (d.reason || '特休假');
+      (groups[key] = groups[key] || []).push(i);
+    });
+    for(const key in groups){
+      const idxs = groups[key];
+      if(idxs.length < 2) continue;
+      idxs.sort((a,b)=>(BATCH_DRAFTS[a].mon*100+BATCH_DRAFTS[a].day)-(BATCH_DRAFTS[b].mon*100+BATCH_DRAFTS[b].day));
+      mergeAnchors.add(idxs[0]);
+    }
+  }
+
   const rows = displayList.map(({d, i}, displayIdx)=>{
     const isOT = d.type==='ot';
     const isMulti = d.type==='multiLeave';
@@ -870,11 +888,14 @@ function renderDrafts(){
     const dateLabel = d.mergedCount
       ? `${d.mon}/${d.day}–${d.endMon===d.mon?'':d.endMon+'/'}${d.endDay}`
       : `${d.mon}/${d.day}`;
+    const mergeBtn = mergeAnchors.has(i)
+      ? `<button class="dr-merge" onclick="mergeEmpDraft(${i})" title="把這位「${detailLabel}」的多張單張假單合併成一張合寫">🔗 合併同假別</button>`
+      : '';
     return `
     <div class="draft-row">
       <span class="dr-no">${displayIdx+1}</span>
       <span class="dr-date">${dateLabel}</span>
-      <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
+      <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small>${mergeBtn}</span>
       <span class="dr-type ${isOT?'ot':'lv'}">${typeLabel}</span>
       <span class="dr-detail">${detailLabel}</span>
       <span class="dr-time">
@@ -1064,6 +1085,69 @@ async function syncSplitToCloud(cloudId, expanded){
     }
   }catch(err){
     console.error('[CloudSync] 拆開同步失敗:', err);
+  }
+}
+
+// 一鍵合併:把「同員工 + 同假別」的多張單張請假,合併成一張(或多張)合寫
+// idx 為被點的那張單張草稿,合併結果保留每張改過的時間
+function mergeEmpDraft(idx){
+  const base = BATCH_DRAFTS[idx];
+  if(!base || base.type !== 'leave') return;
+  const reason = base.reason || '特休假';
+  // 找出同員工、同假別的所有單張請假
+  const group = BATCH_DRAFTS.filter(d =>
+    d.type === 'leave' && d.empKey === base.empKey && (d.reason||'特休假') === reason
+  );
+  if(group.length < 2){
+    alert('這位員工目前只有 1 張這種假別的單張假單,不需要合併。');
+    return;
+  }
+  // 依日期排序,每 4 段一張(四段式;超過自動分張),沿用掃描的合併規則
+  group.sort((a,b)=>(a.mon*100+a.day)-(b.mon*100+b.day));
+  const newMultis = [];
+  for(let i=0; i<group.length; i+=4){
+    newMultis.push(makeMultiLeaveDraft(base.empKey, group.slice(i, i+4)));
+  }
+  const oldCloudIds = group.map(d => d._cloudId).filter(Boolean);
+
+  // 本機:移除被併的單張,加入新合寫,重新排序
+  BATCH_DRAFTS = BATCH_DRAFTS.filter(d => !group.includes(d));
+  BATCH_DRAFTS.push(...newMultis);
+  BATCH_DRAFTS.sort((a,b)=>{
+    const oa=a.mon*100+a.day, ob=b.mon*100+b.day;
+    if(oa!==ob) return oa-ob;
+    return TARGET_NAMES.indexOf(a.empKey)-TARGET_NAMES.indexOf(b.empKey);
+  });
+  renderDrafts();
+
+  // 雲端:只動這幾筆(刪被併的、加新合寫),不做全表重寫
+  syncMergeToCloud(oldCloudIds, newMultis);
+}
+
+// 合併的雲端同步:刪掉被併的單張,加入新合寫,並記回新的 _cloudId
+async function syncMergeToCloud(oldCloudIds, newMultis){
+  if(!SYNC_ENABLED || !window.Cloud) return;
+  try{
+    for(const id of oldCloudIds){ await Cloud.deleteDraft(id); }
+    for(const nm of newMultis){
+      const newId = await Cloud.addDraft({
+        stage: 'batch',
+        empKey: nm.empKey, dayKey: nm.dayKey, mon: nm.mon, day: nm.day,
+        type: nm.type,
+        reason: nm.reason || null,
+        comp: nm.comp || null,
+        shift: nm.shift || null,
+        sourceCode: nm.sourceCode || '',
+        endMon: nm.endMon || null,
+        endDay: nm.endDay || null,
+        endDayKey: nm.endDayKey || null,
+        mergedCount: nm.mergedCount || null,
+        segments: nm.segments || null
+      });
+      nm._cloudId = newId;
+    }
+  }catch(err){
+    console.error('[CloudSync] 合併同步失敗:', err);
   }
 }
 
