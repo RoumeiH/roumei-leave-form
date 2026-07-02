@@ -187,6 +187,7 @@
     </select>
     <button class="refresh" onclick="loadAll(true)">🔄 重新整理</button>
     <button class="pushall" id="pushAllBtn" onclick="doPushAll()">⚡ 一鍵補推全部未簽</button>
+    <button class="pushall" id="notifySupBtn" style="background:linear-gradient(135deg,#6a4fa0,#4b3b78);color:#fff" onclick="doNotifySupervisors()">📤 推給主管簽核</button>
   </div>
 
   <div class="tbl-wrap">
@@ -316,6 +317,9 @@
     document.getElementById('statTotal').textContent   = allForms.length;
     const pend = allForms.filter(f=>f.status==='pending_employee').length;
     document.getElementById('pushAllBtn').disabled = pend===0;
+    const signedCount = allForms.filter(f=>f.status==='employee_signed').length;
+    const nb = document.getElementById('notifySupBtn');
+    if(nb) nb.disabled = signedCount===0;
   }
 
   function renderFilters(){
@@ -407,6 +411,18 @@
       if(!res.ok) throw new Error(data.error||'推送失敗');
       showMsg('ok',`已提醒 ${name}(${data.count} 張)`);
       await loadAll();
+    }catch(err){ showMsg('err',err.message); }
+  };
+
+  window.doNotifySupervisors = async()=>{
+    const signedCount = allForms.filter(f=>f.status==='employee_signed').length;
+    if(signedCount===0){ showMsg('info','目前沒有待主管簽核的假單'); return; }
+    if(!confirm(`推給主管簽核?\n\n將通知已綁定的主管:目前有 ${signedCount} 張假單待簽核。`)) return;
+    try{
+      const res = await fetch('/api/forms?action=notifySupervisors',{ method:'POST' });
+      const data = await res.json();
+      if(!res.ok || data.ok===false) throw new Error(data.error||'推送失敗');
+      showMsg('ok',`已通知 ${data.supCount} 位主管(共 ${data.count} 張待簽核)`);
     }catch(err){ showMsg('err',err.message); }
   };
 
