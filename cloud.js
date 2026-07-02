@@ -153,6 +153,14 @@ export async function archiveDraft(draft){
   await addDoc(FORMS_COL, data);
 }
 
+// 讀取單張假單完整內容(含簽名 base64)——給追蹤後台「看簽名」用
+// 管理者已登入,firestore.rules 允許 admin 讀 forms,故直接走 SDK 讀,不經公開 API
+export async function getFormById(id){
+  const snap = await getDoc(doc(db, "forms", id));
+  if(!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
 // 查詢歷史(可依員工、月份篩選,第二階段大量使用)
 export async function queryForms(filters = {}){
   const conds = [];
@@ -180,7 +188,7 @@ window.Cloud = {
   // Drafts
   addDraft, updateDraft, deleteDraft, watchDrafts,
   // Forms
-  archiveDraft, queryForms
+  archiveDraft, queryForms, getFormById
 };
 
 console.log("[Cloud] Firebase 模組已載入");

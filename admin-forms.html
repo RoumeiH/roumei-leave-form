@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柔美飯店 · 假單追蹤後台</title>
+<style>
+  :root{
+    --ink:#1a2b3c; --ink-soft:#54657a; --line:#d8e0e8; --line-soft:#eef2f6;
+    --bg:#f4f6f9; --paper:#ffffff;
+    --brand:#2b6cb0; --brand-dark:#1f4f82;
+    --accent:#c89b3c; --danger:#c53030; --ok:#2f9e6d;
+    --shadow:0 4px 20px rgba(26,43,60,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg);color:var(--ink);min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* 頂部 */
+  .top{
+    background:linear-gradient(135deg,var(--brand-dark),var(--brand));
+    color:#fff;padding:22px 30px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  }
+  .top h1{font-size:19px;font-weight:800;letter-spacing:.5px;display:flex;align-items:center;gap:9px}
+  .top .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(200,155,60,.3)}
+  .top .actions{display:flex;gap:10px;align-items:center;font-size:13px;flex-wrap:wrap}
+  .top .actions a{color:#fff;text-decoration:none;background:rgba(255,255,255,.15);
+    padding:6px 14px;border-radius:7px;font-weight:600;transition:.15s;font-size:12.5px}
+  .top .actions a:hover{background:rgba(255,255,255,.28)}
+  .top .actions a.cur{background:var(--accent);color:#3a2c08}
+  .top .user{opacity:.9;font-size:12px}
+
+  .wrap{max-width:1200px;margin:0 auto;padding:22px 24px 48px}
+
+  /* 統計卡 */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px 18px;box-shadow:var(--shadow)}
+  .stat .lb{font-size:12px;color:var(--ink-soft);font-weight:600;letter-spacing:.5px;margin-bottom:5px}
+  .stat .num{font-size:28px;font-weight:800;color:var(--brand-dark)}
+  .stat.warn .num{color:var(--accent)}
+  .stat.ok .num{color:var(--ok)}
+  .stat .sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+
+  /* 工具列 */
+  .toolbar{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    margin-bottom:14px;
+  }
+  .filters{display:flex;gap:6px;flex-wrap:wrap}
+  .fbtn{
+    padding:6px 13px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;
+    background:#fff;border:1px solid var(--line);color:var(--ink-soft);font-family:inherit;transition:.15s;
+  }
+  .fbtn:hover{border-color:var(--brand)}
+  .fbtn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .fbtn .c{opacity:.7;margin-left:4px;font-weight:700}
+  .toolbar .spacer{flex:1}
+  .sortsel{
+    padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;
+    color:var(--ink-soft);background:#fff;font-family:inherit;font-weight:600;cursor:pointer;
+  }
+  .refresh,.pushall{
+    padding:7px 13px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;
+    font-family:inherit;transition:.15s;border:1px solid var(--line);
+  }
+  .refresh{background:#fff;color:var(--ink-soft)}
+  .refresh:hover{border-color:var(--brand);color:var(--brand)}
+  .pushall{background:linear-gradient(135deg,#d4b05e,#b8862c);color:#3a2c08;border:none}
+  .pushall:hover{filter:brightness(1.05)}
+  .pushall:disabled{opacity:.45;cursor:not-allowed;filter:none}
+
+  /* 表格 */
+  .tbl-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+  .tbl-scroll{overflow-x:auto}
+  table.forms{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+  table.forms thead th{
+    background:#f7f9fc;color:var(--ink-soft);font-weight:700;text-align:left;
+    padding:11px 14px;font-size:12px;letter-spacing:.5px;white-space:nowrap;
+    border-bottom:1px solid var(--line);
+  }
+  table.forms thead th.right{text-align:right}
+  table.forms tbody td{padding:12px 14px;border-top:1px solid var(--line-soft);vertical-align:middle}
+  table.forms tbody tr:hover{background:#fbfcfe}
+  table.forms tbody tr.row-pending{background:#fffdf7}
+  table.forms tbody tr.row-pending:hover{background:#fffaeb}
+  .emp-name{font-weight:700;color:var(--ink)}
+  .emp-dept{color:var(--ink-soft);font-size:11.5px;margin-left:2px}
+  .f-kind{font-weight:600}
+  .f-date{color:var(--ink-soft);margin-left:4px}
+  .f-sub{font-size:11px;color:var(--ink-soft);margin-top:2px}
+  .push-time{color:var(--ink-soft);font-size:12px;white-space:nowrap}
+  td.opcell{text-align:right;white-space:nowrap}
+
+  .badge{
+    display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;
+    letter-spacing:.3px;white-space:nowrap;
+  }
+  .st-unpushed{background:#f1f3f6;color:#6b7684;border:1px solid #dde2e8}
+  .st-pushed{background:#fdf6e6;color:#a8863f;border:1px solid #f0d9a8}
+  .st-signed{background:#eef8f0;color:#2e7d43;border:1px solid #bfe3c8}
+  .st-completed{background:#e6f3fb;color:var(--brand-dark);border:1px solid #b9d8ef}
+  .st-archived{background:#f1f3f6;color:#9aa3ad;border:1px solid #e2e6ea}
+
+  .btn{padding:6px 12px;border:none;border-radius:7px;font-size:12px;font-weight:700;
+    cursor:pointer;font-family:inherit;transition:.15s}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-push{background:var(--accent);color:#3a2c08}
+  .btn-push:hover{filter:brightness(1.06)}
+  .btn-repush{background:#fff;color:#a8863f;border:1px solid #f0d9a8}
+  .btn-repush:hover{background:#fdf6e6}
+  .btn-view{background:#eef4fa;color:var(--brand-dark)}
+  .btn-view:hover{background:#e0ecf7}
+
+  .empty{padding:38px 20px;text-align:center;color:var(--ink-soft);font-size:13px}
+  .empty .icon{font-size:34px;margin-bottom:8px}
+  .loading{text-align:center;padding:44px 20px;color:var(--ink-soft);font-size:13px}
+
+  .msg{padding:12px 16px;border-radius:9px;font-size:13.5px;font-weight:600;margin-bottom:12px;line-height:1.6}
+  .msg.err{background:#fdecea;color:var(--danger)}
+  .msg.ok{background:#e6f6ed;color:var(--ok)}
+  .msg.info{background:#e6f3fb;color:var(--brand-dark)}
+
+  /* 簽名檢視 modal */
+  .modal-bg{
+    position:fixed;inset:0;background:rgba(26,43,60,.55);display:none;
+    align-items:center;justify-content:center;z-index:50;padding:20px;
+  }
+  .modal-bg.show{display:flex}
+  .modal{
+    background:#fff;border-radius:14px;max-width:560px;width:100%;overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.3);
+  }
+  .modal .mh{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;justify-content:space-between}
+  .modal .mh b{font-size:15px}
+  .modal .mh .x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-soft);line-height:1}
+  .modal .mb{padding:20px;text-align:center;background:#f7f9fc}
+  .modal .mb img{max-width:100%;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .modal .mb .meta{font-size:12px;color:var(--ink-soft);margin-top:12px}
+
+  .foot-note{font-size:11.5px;color:var(--ink-soft);text-align:center;margin-top:16px;line-height:1.6}
+
+  @media(max-width:600px){
+    .top{padding:16px 18px}
+    .top h1{font-size:16px}
+    .wrap{padding:16px 14px 30px}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1><span class="dot"></span>假單追蹤後台</h1>
+  <div class="actions">
+    <span class="user" id="userInfo">—</span>
+    <a href="index.html">開單</a>
+    <a href="admin-bindings.html">綁定管理</a>
+    <a href="#" class="cur">假單追蹤</a>
+    <a href="#" onclick="doLogout();return false">登出</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="msgBox"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="lb">今日建立</div><div class="num" id="statToday">—</div><div class="sub">今天新產出的假單</div></div>
+    <div class="stat warn"><div class="lb">待簽(未推+已推)</div><div class="num" id="statPending">—</div><div class="sub">員工尚未簽名</div></div>
+    <div class="stat ok"><div class="lb">員工已簽</div><div class="num" id="statSigned">—</div><div class="sub">已完成員工簽名</div></div>
+    <div class="stat"><div class="lb">假單總數</div><div class="num" id="statTotal">—</div><div class="sub">系統內全部假單</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="filters" id="filters"></div>
+    <div class="spacer"></div>
+    <select class="sortsel" id="sortSel" onchange="applyRender()">
+      <option value="created">依建立時間(新→舊)</option>
+      <option value="date">依假單日期</option>
+      <option value="emp">依員工姓名</option>
+    </select>
+    <button class="refresh" onclick="loadAll(true)">🔄 重新整理</button>
+    <button class="pushall" id="pushAllBtn" onclick="doPushAll()">⚡ 一鍵補推全部未簽</button>
+  </div>
+
+  <div class="tbl-wrap">
+    <div id="tableArea">
+      <div class="loading">載入中…</div>
+    </div>
+  </div>
+
+  <div class="foot-note">
+    🔄 每 15 秒自動更新 · 「重新推送」會用一則 LINE 訊息提醒該員工簽署他全部未簽假單<br>
+    已簽假單為電子憑證,請勿隨意刪除
+  </div>
+</div>
+
+<!-- 簽名檢視 -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="mh"><b id="modalTitle">簽名</b><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mb" id="modalBody"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { watchAuth, logout, getFormById } from "./cloud.js";
+
+  /* ---------- 名單(顯示用備援,若假單已存 fullName/dept 則以其為主) ---------- */
+  const ROSTER = {
+    '緯宸':{full:'蔡緯宸',dept:'泊車'}, '順正':{full:'蔡順正',dept:'泊車'},
+    '小涵':{full:'鍾秀珠',dept:'房務'}, '淑雲':{full:'陳淑雲',dept:'房務'},
+    '婉茹':{full:'黃婉茹',dept:'房務'}, '玉美':{full:'黃玉美',dept:'房務'},
+    '玉樺':{full:'陳玉樺',dept:'房務'}, '俊傑':{full:'林秉德',dept:'房務'},
+    '東志':{full:'鍾東志',dept:'房務'}, '敏智':{full:'廖敏智',dept:'房務'},
+    '莉莉':{full:'張莉莉',dept:'房務'}, '俐均':{full:'賴俐均',dept:'倉管'},
+  };
+
+  const TYPE_LABEL = {
+    leave:'請假單', ot:'加班單', miss:'未刷卡證明單',
+    wrong:'休假誤刷證明', multiLeave:'請假單(多段)',
+  };
+
+  const STATUS_META = {
+    unpushed:  {label:'未推',       cls:'st-unpushed'},
+    pushed:    {label:'已推等待簽', cls:'st-pushed'},
+    signed:    {label:'員工已簽',   cls:'st-signed'},
+    completed: {label:'完成',       cls:'st-completed'},
+    archived:  {label:'已歸檔',     cls:'st-archived'},
+  };
+
+  const FILTERS = [
+    {key:'all',      label:'全部'},
+    {key:'unpushed', label:'未推'},
+    {key:'pushed',   label:'已推等待簽'},
+    {key:'signed',   label:'已簽'},
+    {key:'completed',label:'完成'},
+  ];
+
+  let allForms = [];
+  let curFilter = 'all';
+  let timer = null;
+
+  /* ---------- 工具 ---------- */
+  function classify(f){
+    if(f.status==='employee_signed') return 'signed';
+    if(f.status==='completed') return 'completed';
+    if(f.status==='archived') return 'archived';
+    return f.lastPushAt ? 'pushed' : 'unpushed';   // pending_employee
+  }
+  function empInfo(f){
+    const r = ROSTER[f.empKey] || {};
+    return { name: f.fullName || r.full || f.empKey || '(未知)', dept: f.dept || r.dept || '-' };
+  }
+  function typeLabel(f){ return TYPE_LABEL[f.type] || f.type || '假單'; }
+  function dateStr(f){
+    if(f.type==='multiLeave' && Array.isArray(f.segments) && f.segments.length){
+      return f.segments.map(s=>{
+        if(s.startMon===s.endMon && s.startDay===s.endDay) return `${s.startMon}/${s.startDay}`;
+        return `${s.startMon}/${s.startDay}–${s.endDay}`;
+      }).join('、');
+    }
+    if(f.endMon && f.mergedCount>1) return `${f.mon}/${f.day}–${f.endDay}`;
+    return `${f.mon}/${f.day}`;
+  }
+  function isToday(iso){
+    if(!iso) return false;
+    const d=new Date(iso), n=new Date();
+    return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
+  }
+  function fmtTime(iso){
+    if(!iso) return '—';
+    const d=new Date(iso), n=new Date();
+    const hm = d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false});
+    const sameDay = d.toDateString()===n.toDateString();
+    const y=new Date(n); y.setDate(y.getDate()-1);
+    if(sameDay) return `今天 ${hm}`;
+    if(d.toDateString()===y.toDateString()) return `昨天 ${hm}`;
+    return d.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'}) + ` ${hm}`;
+  }
+  function empUnsignedCount(empKey){
+    return allForms.filter(f=>f.empKey===empKey && f.status==='pending_employee').length;
+  }
+  function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  /* ---------- 載入 ---------- */
+  async function loadAll(manual){
+    try{
+      const res = await fetch('/api/forms');
+      if(!res.ok) throw new Error('讀取失敗 ('+res.status+')');
+      const data = await res.json();
+      allForms = data.forms || [];
+      renderStats();
+      renderFilters();
+      applyRender();
+      if(manual) showMsg('ok','已更新');
+    }catch(err){
+      document.getElementById('tableArea').innerHTML =
+        `<div class="empty"><div class="icon">⚠️</div>載入失敗:${esc(err.message)}</div>`;
+    }
+  }
+
+  function renderStats(){
+    document.getElementById('statToday').textContent   = allForms.filter(f=>isToday(f.createdAt)).length;
+    document.getElementById('statPending').textContent = allForms.filter(f=>f.status==='pending_employee').length;
+    document.getElementById('statSigned').textContent  = allForms.filter(f=>f.status==='employee_signed').length;
+    document.getElementById('statTotal').textContent   = allForms.length;
+    const pend = allForms.filter(f=>f.status==='pending_employee').length;
+    document.getElementById('pushAllBtn').disabled = pend===0;
+  }
+
+  function renderFilters(){
+    const counts = { all:allForms.length };
+    for(const f of allForms){ const c=classify(f); counts[c]=(counts[c]||0)+1; }
+    document.getElementById('filters').innerHTML = FILTERS.map(f=>{
+      const n = f.key==='all' ? counts.all : (counts[f.key]||0);
+      return `<button class="fbtn ${curFilter===f.key?'on':''}" onclick="setFilter('${f.key}')">${f.label}<span class="c">${n}</span></button>`;
+    }).join('');
+  }
+
+  window.setFilter = (k)=>{ curFilter=k; renderFilters(); applyRender(); };
+
+  window.applyRender = ()=>{
+    let rows = curFilter==='all' ? allForms.slice() : allForms.filter(f=>classify(f)===curFilter);
+
+    const sort = document.getElementById('sortSel').value;
+    if(sort==='date'){
+      rows.sort((a,b)=>(a.mon*100+a.day)-(b.mon*100+b.day));
+    }else if(sort==='emp'){
+      rows.sort((a,b)=> empInfo(a).name.localeCompare(empInfo(b).name,'zh-Hant'));
+    }else{ // created desc
+      rows.sort((a,b)=> new Date(b.createdAt||0)-new Date(a.createdAt||0));
+    }
+
+    const area = document.getElementById('tableArea');
+    if(rows.length===0){
+      area.innerHTML = `<div class="empty"><div class="icon">📭</div>此分類目前沒有假單</div>`;
+      return;
+    }
+
+    const body = rows.map(f=>{
+      const {name,dept} = empInfo(f);
+      const cat = classify(f);
+      const meta = STATUS_META[cat];
+      const rowCls = (cat==='unpushed'||cat==='pushed') ? 'row-pending' : '';
+      const sub = f.shift ? `<div class="f-sub">${esc(f.shift)}</div>` : '';
+
+      let op = '';
+      if(cat==='unpushed'){
+        op = `<button class="btn btn-push" onclick="doRepush('${esc(f.empKey)}','${esc(name)}')">推送</button>`;
+      }else if(cat==='pushed'){
+        op = `<button class="btn btn-repush" onclick="doRepush('${esc(f.empKey)}','${esc(name)}')">重新推送</button>`;
+      }else if(cat==='signed'||cat==='completed'){
+        op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">看簽名</button>`;
+      }else{
+        op = `<span style="color:var(--ink-soft);font-size:12px">—</span>`;
+      }
+
+      return `<tr class="${rowCls}">
+        <td><span class="emp-name">${esc(name)}</span><span class="emp-dept">·${esc(dept)}</span></td>
+        <td><span class="f-kind">${esc(typeLabel(f))}</span><span class="f-date">${esc(dateStr(f))}</span>${sub}</td>
+        <td><span class="badge ${meta.cls}">${meta.label}</span></td>
+        <td class="push-time">${fmtTime(f.lastPushAt)}</td>
+        <td class="opcell">${op}</td>
+      </tr>`;
+    }).join('');
+
+    area.innerHTML = `<div class="tbl-scroll"><table class="forms">
+      <thead><tr>
+        <th>員工</th><th>類型 · 日期</th><th>狀態</th><th>最後推播</th><th class="right">操作</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+  };
+
+  /* ---------- 推播 ---------- */
+  window.doRepush = async(empKey,name)=>{
+    const n = empUnsignedCount(empKey);
+    if(!confirm(`重新推送給「${name}」?\n\n系統會用一則 LINE 訊息提醒他簽署全部 ${n} 張未簽假單。`)) return;
+    try{
+      const res = await fetch('/api/forms?action=repush',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ empKey })
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error||'推送失敗');
+      showMsg('ok',`已提醒 ${name}(${data.count} 張)`);
+      await loadAll();
+    }catch(err){ showMsg('err',err.message); }
+  };
+
+  window.doPushAll = async()=>{
+    const pend = allForms.filter(f=>f.status==='pending_employee');
+    if(pend.length===0){ showMsg('info','目前沒有待簽的假單'); return; }
+    const emps = new Set(pend.map(f=>f.empKey));
+    if(!confirm(`補推全部未簽?\n\n將提醒 ${emps.size} 位員工、共 ${pend.length} 張假單(每人一則訊息)。`)) return;
+    try{
+      const res = await fetch('/api/forms?action=pushAll',{ method:'POST' });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error||'推送失敗');
+      showMsg('ok',`已推送:成功 ${data.okCount} 人、失敗 ${data.failCount} 人`);
+      await loadAll();
+    }catch(err){ showMsg('err',err.message); }
+  };
+
+  /* ---------- 看簽名 ---------- */
+  window.viewSign = async(id,name)=>{
+    document.getElementById('modalTitle').textContent = `${name} 的簽名`;
+    document.getElementById('modalBody').innerHTML = '<div style="color:#54657a;font-size:13px">讀取中…</div>';
+    document.getElementById('modalBg').classList.add('show');
+    try{
+      const f = await getFormById(id);
+      if(!f || !f.employeeSignatureData){
+        document.getElementById('modalBody').innerHTML = '<div style="color:#c53030;font-size:13px">找不到簽名資料</div>';
+        return;
+      }
+      const when = f.employeeSignedAt?.toDate ? f.employeeSignedAt.toDate()
+                 : (f.employeeSignedAt?._seconds ? new Date(f.employeeSignedAt._seconds*1000) : null);
+      const whenStr = when ? when.toLocaleString('zh-TW',{hour12:false}) : '';
+      document.getElementById('modalBody').innerHTML =
+        `<img src="${f.employeeSignatureData}" alt="簽名">
+         <div class="meta">${esc(typeLabel(f))} · ${esc(dateStr(f))}${whenStr?` · 簽名時間 ${whenStr}`:''}</div>`;
+    }catch(err){
+      document.getElementById('modalBody').innerHTML = `<div style="color:#c53030;font-size:13px">讀取失敗:${esc(err.message)}</div>`;
+    }
+  };
+  window.closeModal = ()=> document.getElementById('modalBg').classList.remove('show');
+
+  /* ---------- 訊息 ---------- */
+  function showMsg(type,text){
+    document.getElementById('msgBox').innerHTML = `<div class="msg ${type}">${esc(text)}</div>`;
+    setTimeout(()=>{ const el=document.querySelector('.msg'); if(el) el.style.opacity='0.6'; },4000);
+  }
+
+  /* ---------- 認證 + 啟動 ---------- */
+  watchAuth(user=>{
+    if(!user){ location.href='login.html'; return; }
+    document.getElementById('userInfo').textContent = user.email || user.uid;
+    loadAll();
+    if(timer) clearInterval(timer);
+    timer = setInterval(()=>{ if(!document.hidden) loadAll(); }, 15000);
+  });
+
+  window.doLogout = async()=>{ await logout(); location.href='login.html'; };
+</script>
+</body>
+</html>
