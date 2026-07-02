@@ -508,11 +508,10 @@ function classifyCell(empKey, dayKey, code){
   }
 
   // 規則 1：年 → 請假單、特休、平常工時
-  //（用 exact 判斷避免把「年終」「年會」誤判；純「年」才算）
-  if(raw === '年'){
-    const sh = standardShift(empKey);
-    if(!sh) return null;   // 推不出平常工時 → 略過
-    return { type:'leave', reason:'特休假', shift:sh, sourceCode:raw };
+  //（用 exact 判斷避免把「年終」「年會」誤判；純「年」才算,允許前後空白)
+  if(raw === '年' || raw.trim() === '年'){
+    const sh = standardShift(empKey) || { start:'', end:'' };
+    return { type:'leave', reason:'特休假', shift:sh, sourceCode:'年' };
   }
 
   return null;
@@ -1171,9 +1170,9 @@ function renderDraftAsForm(d){
   // 建臨時 DOM 讓 build 函式讀 val()
   const tmp = document.createElement('div');
   tmp.style.display='none';
-  const sh = d.shift;
-  const [sH,sM] = sh.start.split(':');
-  const [eH,eM] = sh.end.split(':');
+  const sh = d.shift || { start:'', end:'' };
+  const [sH,sM] = (sh.start||':').split(':');
+  const [eH,eM] = (sh.end||':').split(':');
 
   let html='';
   if(d.type==='leave'){
@@ -1610,7 +1609,47 @@ function buildLeave(){
 function buildMultiLeave(draft){
   const Y = rocY();
   const empKey = draft.empKey;
-  const segments = draft.segments || [];
+  let segments = draft.segments || [];
+
+  // 防禦:如果 segments 完全空,但 draft 有 mon/day,把 draft 本身當成一段
+  if(segments.length === 0 && draft.mon && draft.day){
+    console.warn('[buildMultiLeave] segments 空,用 draft 補一段', draft);
+    segments = [{
+      startMon: draft.mon,
+      startDay: draft.day,
+      endMon: draft.endMon || draft.mon,
+      endDay: draft.endDay || draft.day,
+      shift: draft.shift,
+      reason: draft.reason || '特休假',
+    }];
+  }
+
+  // 防禦:segments 內每個物件的欄位補完(以防雲端序列化弄丟)
+  segments = segments.map((s, idx) => {
+    if(!s) return null;
+    // startMon/startDay 空 → 用 mon/day 補;shift 空 → 用員工 standardShift
+    const startMon = s.startMon ?? s.mon ?? null;
+    const startDay = s.startDay ?? s.day ?? null;
+    const endMon   = s.endMon   ?? s.startMon ?? s.mon ?? null;
+    const endDay   = s.endDay   ?? s.startDay ?? s.day ?? null;
+    let shift = s.shift;
+    if(!shift || (!shift.start && !shift.end)){
+      // 嘗試用員工的標準工時補
+      const std = (typeof standardShift === 'function') ? standardShift(empKey) : null;
+      if(std) shift = std;
+      else shift = { start:'', end:'' };
+    }
+    if(!startMon || !startDay){
+      console.warn(`[buildMultiLeave] 第 ${idx+1} 段缺日期,原始資料:`, s);
+    }
+    return {
+      startMon, startDay, endMon, endDay, shift,
+      reason: s.reason || '特休假',
+      note: s.note || '',
+      mergedCount: s.mergedCount || null,
+    };
+  });
+
   // 補足到 4 段(空白段給簽名時填)
   const segs = [...segments];
   while(segs.length < 4) segs.push(null);
@@ -1675,8 +1714,8 @@ function buildMultiLeave(draft){
     <tr class="ml-daterow" style="height:56px">
       <td class="lb">日期</td>
       <td colspan="3" class="editable">
-        自 ${Y} 年 ${s.startMon} 月 ${s.startDay} 日 ${sH} 時 ${sM} 分起<br>
-        至 ${Y} 年 ${s.endMon} 月 ${s.endDay} 日 ${eH} 時 ${eM} 分止
+        自 ${Y} 年 ${s.startMon||'　'} 月 ${s.startDay||'　'} 日 ${sH} 時 ${sM} 分起<br>
+        至 ${Y} 年 ${s.endMon||'　'} 月 ${s.endDay||'　'} 日 ${eH} 時 ${eM} 分止
       </td>
       <td class="lb">共計</td>
       <td class="editable">${days||'　'} 日 ${hrs||'　'} 時 ${mins||'　'} 分</td>
@@ -1964,7 +2003,13 @@ async function bootstrapCloud(){
         html: renderDraftAsForm({
           empKey: d.empKey, dayKey: d.dayKey, mon: d.mon, day: d.day,
           type: d.type, reason: d.reason, comp: d.comp, shift: d.shift,
-          sourceCode: d.sourceCode
+          sourceCode: d.sourceCode,
+          // 多段與連續合併必要欄位
+          segments: d.segments,
+          endMon: d.endMon,
+          endDay: d.endDay,
+          endDayKey: d.endDayKey,
+          mergedCount: d.mergedCount
         })
       }));
 
@@ -2044,8 +2089,15 @@ async function syncAddToPrintList(draft, label){
       type: draft.type,
       reason: draft.reason || null,
       comp: draft.comp || null,
-      shift: draft.shift,
-      sourceCode: draft.sourceCode || ''
+      shift: draft.shift || null,
+      sourceCode: draft.sourceCode || '',
+      // 多段合寫必要欄位(不存的話載回來會空)
+      segments: draft.segments || null,
+      // 連續合併年假的必要欄位
+      endMon: draft.endMon || null,
+      endDay: draft.endDay || null,
+      endDayKey: draft.endDayKey || null,
+      mergedCount: draft.mergedCount || null
     });
   }catch(err){
     console.error('[CloudSync] 加入列印清單失敗:', err);
