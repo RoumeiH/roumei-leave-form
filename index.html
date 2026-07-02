@@ -292,6 +292,15 @@
     background:transparent;border:none;color:inherit;cursor:pointer;
   }
   .gs-tab:hover .gs-tab-del{opacity:.9}
+  .gs-tab .gs-tab-edit{
+    margin-left:2px;padding:0 3px;font-size:11px;opacity:.55;
+    background:transparent;border:none;color:inherit;cursor:pointer;font-family:inherit;
+  }
+  .gs-tab:hover .gs-tab-edit{opacity:.9}
+  .gs-tab-hint{
+    width:100%;font-size:11px;color:var(--ink-soft);
+    padding:6px 2px 0;line-height:1.5;font-weight:400;
+  }
 
   /* 列印清單管理區 */
   .queue-box{max-width:820px;margin:0 auto 22px;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:var(--shadow)}
@@ -394,7 +403,12 @@
         <button class="btn btn-ghost" style="margin-top:8px" onclick="loadFromGoogleSheet()">讀取班表</button>
 
         <div id="gsHistory" style="display:none;margin-top:10px">
-          <label class="fld" style="margin-top:0">最近使用的分頁</label>
+          <label class="fld" style="margin-top:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span>最近使用的分頁</span>
+            <span style="font-size:10.5px;color:var(--ink-soft);font-weight:500;letter-spacing:0">
+              💡 雙擊可命名(例如「7月」「8月」)
+            </span>
+          </label>
           <div id="gsHistoryList" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         </div>
 

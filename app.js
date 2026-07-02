@@ -1968,18 +1968,35 @@ function urlLabel(url){
   return gm ? `gid ${gm[1].slice(0,6)}` : `分頁`;
 }
 
-// 新增到最近清單(避免重複)
+// 新增到最近清單(避免重複);若同 gid 已存在,保留舊 label(避免覆蓋改過的名字)
 function addRecentUrl(url){
   if(!url) return;
-  // 去除同一 gid 的舊項
   const gm = url.match(/[#&?]gid=(\d+)/);
   const gid = gm ? gm[1] : null;
+
+  // 找出同 gid 的舊項目,保留它的 label(如果有改過名字)
+  let existingLabel = null;
+  if(gid){
+    const existing = RECENT_URLS.find(u => {
+      const g = u.url.match(/[#&?]gid=(\d+)/);
+      return g && g[1] === gid;
+    });
+    if(existing) existingLabel = existing.label;
+  }
+
+  // 移除舊項目
   RECENT_URLS = RECENT_URLS.filter(u => {
     const g = u.url.match(/[#&?]gid=(\d+)/);
     return !gid || (g && g[1] !== gid);
   });
-  // 插到最前面
-  RECENT_URLS.unshift({ url, label: urlLabel(url), addedAt: Date.now() });
+
+  // 插到最前面(用舊 label 或預設 label)
+  RECENT_URLS.unshift({
+    url,
+    label: existingLabel || urlLabel(url),
+    addedAt: Date.now()
+  });
+
   // 最多存 6 個
   if(RECENT_URLS.length > 6) RECENT_URLS = RECENT_URLS.slice(0, 6);
   renderRecentUrls();
@@ -2027,9 +2044,10 @@ function renderRecentUrls(){
   if(!RECENT_URLS.length){ box.style.display='none'; return; }
   box.style.display = 'block';
   list.innerHTML = RECENT_URLS.map((it, i) => `
-    <span class="gs-tab" onclick="useRecentUrl(${i})" ondblclick="event.stopPropagation();renameRecentUrl(${i})" title="點擊切換此分頁 · 雙擊改名">
+    <span class="gs-tab" onclick="useRecentUrl(${i})" ondblclick="event.stopPropagation();renameRecentUrl(${i})" title="點擊切換分頁 · 雙擊改名">
       ${it.label}
+      <button class="gs-tab-edit" onclick="event.stopPropagation();renameRecentUrl(${i})" title="改名">✎</button>
       <button class="gs-tab-del" onclick="event.stopPropagation();removeRecentUrl(${i})" title="移除">✕</button>
     </span>
-  `).join('');
+  `).join('') + '<div class="gs-tab-hint">💡 雙擊快捷鈕或按 ✎ 改名(例如 7月、8月)</div>';
 }
