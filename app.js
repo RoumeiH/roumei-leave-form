@@ -321,6 +321,19 @@ function refreshDays(){
   daySel.innerHTML = '<option value="">— 請選擇日期 —</option>';
   const M = parseInt(document.getElementById('month').value,10) || state.month;
 
+  // 員工不在班表(SCHEDULE 沒讀到) → 全部視為手動,列 1~31 日
+  if(!emp){
+    if(M){
+      for(let d=1; d<=31; d++){
+        daySel.innerHTML += `<option value="${M}/${d}">${d} 日 ｜ (手動)</option>`;
+      }
+    }else{
+      daySel.innerHTML = '<option value="">請先在上方填月份</option>';
+    }
+    preview.style.display='none';
+    return;
+  }
+
   // 列出 1~31 全部日期,班表有的顯示班別、班表沒有的標示「(手動)」
   if(M){
     const monthKeys = new Set(Object.keys(emp.days).filter(k => +k.split('/')[0] === M));
@@ -378,7 +391,9 @@ function onDayChange(){
   state.dayKey = document.getElementById('daySelect').value || null;
   if(state.dayKey){ state.month = +state.dayKey.split('/')[0]; }
   state.rocYear = parseInt(document.getElementById('rocYear').value,10)||115;
-  if(state.empName && !isManual(state.empName)) renderSchedPreview(SCHEDULE[state.empName]);
+  if(state.empName && !isManual(state.empName) && SCHEDULE[state.empName]){
+    renderSchedPreview(SCHEDULE[state.empName]);
+  }
   if(state.dayKey){
     const s3=document.getElementById('step3'); s3.style.opacity=1; s3.style.pointerEvents='auto';
     renderDynFields();
@@ -388,9 +403,10 @@ function onDayChange(){
 /* ---------- 假單類型切換 ---------- */
 function setFormType(t){
   state.formType = t;
-  ['leave','ot','miss'].forEach(k=>{
-    document.getElementById('ft'+(k==='leave'?'Leave':k==='ot'?'OT':'Miss'))
-      .classList.toggle('on', k===t);
+  const btnMap = { leave:'Leave', ot:'OT', miss:'Miss', wrong:'Wrong' };
+  Object.entries(btnMap).forEach(([k, name])=>{
+    const btn = document.getElementById('ft' + name);
+    if(btn) btn.classList.toggle('on', k===t);
   });
   renderDynFields();
 }
@@ -399,10 +415,13 @@ function setFormType(t){
 function currentShift(){
   if(!state.empName||!state.dayKey) return null;
   if(isManual(state.empName)) return fixedShift(state.empName);   // 手動模式：固定工時
-  return parseShift(SCHEDULE[state.empName].days[state.dayKey]);
+  const emp = SCHEDULE[state.empName];
+  if(!emp) return null;   // 員工不在班表(全手動)→ 無班表時間可用
+  return parseShift(emp.days[state.dayKey]);
 }
 // 選定日的時間：當天有班就用當天；休假類(年/國/休…)回退到標準工時；手動模式用固定工時
 function effectiveShift(){
+  if(!state.empName) return null;
   if(isManual(state.empName)) return fixedShift(state.empName);
   const s = currentShift();
   if(s) return s;
@@ -1090,6 +1109,27 @@ function renderDraftAsForm(d){
     `;
     document.body.appendChild(tmp);
     html = buildLeave();
+  }else if(d.type === 'wrong'){
+    // 休假誤刷證明:只有一個時間點
+    const sh = d.shift || {start:'',end:''};
+    const [wH, wM] = (sh.start || ':').split(':');
+    tmp.innerHTML = `
+      <input id="f_title" value="${deptOf(d.empKey)}">
+      <input id="f_wrongDay" value="${d.day || ''}">
+      <input id="f_wh" value="${wH || ''}"><input id="f_wm" value="${wM || ''}">
+    `;
+    document.body.appendChild(tmp);
+    html = buildWrong();
+  }else if(d.type === 'miss'){
+    // 未刷卡:走原本 buildMiss(帶預設值,不能保證完整還原,但列印可用)
+    tmp.innerHTML = `
+      <input id="f_title" value="${deptOf(d.empKey)}">
+      <input type="radio" name="misskind" value="上班" checked>
+      <input id="f_mh" value="${+sH || ''}"><input id="f_mm" value="${+sM || ''}">
+      <select id="f_reason"><option selected>忘記打卡(漏打卡)</option></select>
+    `;
+    document.body.appendChild(tmp);
+    html = buildMiss();
   }else{
     tmp.innerHTML = `
       <input id="f_title" value="${deptOf(d.empKey)}">
@@ -1210,7 +1250,7 @@ function renderDynFields(){
       <label class="fld">備註</label>
       <input id="f_note" placeholder="（可留空）">`;
   }
-  else { // miss 未刷卡
+  else if(state.formType==='miss'){ // 未刷卡
     box.innerHTML = `
       <label class="fld">職稱 / 單位</label>
       <input id="f_title" value="${deptOf(state.empName)}">
@@ -1247,6 +1287,21 @@ function renderDynFields(){
         });
       });
     },0);
+  }
+  else if(state.formType==='wrong'){ // 休假誤刷證明
+    box.innerHTML = `
+      <div class="mini-note" style="margin-top:0;margin-bottom:10px">
+        用於員工休假日誤刷卡的情況(當日實際為休假並未排班出勤)。
+      </div>
+      <label class="fld">職稱 / 單位</label>
+      <input id="f_title" value="${deptOf(state.empName)}">
+      <label class="fld">誤刷日期(日)</label>
+      <input id="f_wrongDay" type="number" value="${currentDay()||''}" min="1" max="31">
+      <label class="fld">誤刷時間 — 時 / 分</label>
+      <div class="row2">
+        <input id="f_wh" type="number" placeholder="時" min="0" max="23">
+        <input id="f_wm" type="number" placeholder="分" min="0" max="59">
+      </div>`;
   }
 }
 
@@ -1302,6 +1357,7 @@ function generate(){
   let unit='', kind='';
   if(state.formType==='leave'){ unit=buildLeave(); kind='請假單'; }
   else if(state.formType==='ot'){ unit=buildOT(); kind='加班單'; }
+  else if(state.formType==='wrong'){ unit=buildWrong(); kind='休假誤刷證明'; }
   else { unit=buildMiss(); kind='未刷卡證明單'; }
 
   const label = `${empName()}｜${rocY()}年${mon()}月${currentDay()}日｜${kind}`;
@@ -1310,7 +1366,10 @@ function generate(){
 
   // 同步到雲端(手動開單也存,供多裝置同步)
   if(typeof syncAddToPrintList === 'function' && state.empName && state.dayKey){
-    const type = state.formType==='leave' ? 'leave' : state.formType==='ot' ? 'ot' : 'miss';
+    const type = state.formType==='leave' ? 'leave'
+               : state.formType==='ot'    ? 'ot'
+               : state.formType==='wrong' ? 'wrong'
+               : 'miss';
     const draft = {
       empKey: state.empName,
       dayKey: state.dayKey,
@@ -1672,6 +1731,34 @@ function buildMiss(){
         <td>申　請　人：</td><td colspan="2">單位主管證明：</td><td colspan="3">館店最高主管審核：</td>
       </tr>
     </table>
+  </div>`;
+}
+
+/* ---------- 休假誤刷證明 ---------- */
+function buildWrong(){
+  const Y = rocY();
+  const M = mon();
+  const D = val('f_wrongDay') || currentDay();
+  const wh = val('f_wh'), wm = val('f_wm');
+  return `
+  <div class="form-unit v2 wrong-form">
+    <div class="fu-head" style="border-bottom:none;padding-bottom:6px">
+      <div class="fu-nm" style="font-size:22px;letter-spacing:8px;text-align:center">誤　刷　卡　證　明</div>
+    </div>
+    <div class="wrong-body">
+      <p class="wrong-line">
+        本人 <span class="fill fill-name">${empName()}</span>
+        於民國 <span class="fill">${Y}</span> 年
+        <span class="fill">${M}</span> 月
+        <span class="fill">${D}</span> 日
+        <span class="fill">${wh || '　'}</span> 點
+        <span class="fill">${wm || '　'}</span> 分誤刷卡,當日實際為休假並未排班出勤,特此證明。
+      </p>
+      <div class="wrong-sign">
+        <div class="sign-name">本人簽名:<span class="sign-line"></span></div>
+        <div class="sign-date">民國 <span class="fill">${Y}</span> 年 <span class="fill">　</span> 月 <span class="fill">　</span> 日</div>
+      </div>
+    </div>
   </div>`;
 }
 

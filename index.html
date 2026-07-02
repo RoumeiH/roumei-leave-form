@@ -108,10 +108,11 @@
   .pill:hover{border-color:var(--brand)}
   .pill.on{background:var(--brand);color:#fff;border-color:var(--brand)}
 
-  .formtype{display:flex;gap:6px;margin-top:4px}
+  .formtype{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
   .formtype button{
-    flex:1;padding:11px 6px;border:1px solid var(--line);border-radius:9px;background:#fff;
-    font-size:12.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;font-family:inherit;transition:.12s
+    flex:1 1 40%;min-width:0;padding:11px 4px;border:1px solid var(--line);border-radius:9px;background:#fff;
+    font-size:12px;font-weight:700;color:var(--ink-soft);cursor:pointer;font-family:inherit;transition:.12s;
+    white-space:nowrap;letter-spacing:0
   }
   .formtype button.on{background:var(--brand-dark);color:#fff;border-color:var(--brand-dark)}
 
@@ -195,6 +196,27 @@
   .ckbox{font-family:inherit;margin-right:4px}
   table.ft.v2 .sign-row td{height:54px;vertical-align:bottom;font-size:13px;color:#222;text-align:left;padding:0 0 8px 10px;letter-spacing:1px}
   table.ft.v2 .sign-row.tall td{height:60px}
+
+  /* 休假誤刷證明 */
+  .form-unit.v2.wrong-form{padding:14mm 12mm}
+  .wrong-form .fu-nm{padding-top:6mm;padding-bottom:8mm}
+  .wrong-body{font-size:15px;line-height:2.4;color:#000;padding-top:4mm}
+  .wrong-line{text-align:justify;letter-spacing:1px}
+  .wrong-line .fill{
+    display:inline-block;min-width:22px;text-align:center;
+    border-bottom:1px solid #000;padding:0 6px;font-weight:600;
+  }
+  .wrong-line .fill.fill-name{min-width:80px;font-weight:800;letter-spacing:2px}
+  .wrong-sign{margin-top:14mm;text-align:right;font-size:15px;line-height:2.2}
+  .wrong-sign .sign-name{margin-bottom:2mm}
+  .wrong-sign .sign-line{
+    display:inline-block;width:150px;border-bottom:1px solid #000;
+    margin-left:6px;height:1.4em;vertical-align:bottom;
+  }
+  .wrong-sign .sign-date .fill{
+    display:inline-block;min-width:36px;text-align:center;
+    border-bottom:1px solid #000;padding:0 6px;
+  }
 
   /* 列印 */
   @media print{
@@ -443,6 +465,7 @@
         <button id="ftLeave" class="on" onclick="setFormType('leave')">請假單</button>
         <button id="ftOT" onclick="setFormType('ot')">加班單</button>
         <button id="ftMiss" onclick="setFormType('miss')">未刷卡證明單</button>
+        <button id="ftWrong" onclick="setFormType('wrong')">休假誤刷證明</button>
       </div>
       <div id="dynFields"></div>
       <button class="btn btn-primary" style="margin-top:14px" onclick="generate()">＋ 加入列印清單</button>
