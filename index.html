@@ -242,6 +242,13 @@
     color:var(--ink-soft);cursor:pointer;font-family:inherit;
   }
   .ub-logout:hover{background:#fff;color:var(--danger);border-color:var(--danger)}
+  .ub-link{
+    background:transparent;border:1px solid var(--line);
+    padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;
+    color:var(--ink-soft);cursor:pointer;font-family:inherit;
+    text-decoration:none;transition:.15s;
+  }
+  .ub-link:hover{background:#fff;color:var(--brand);border-color:var(--brand)}
   @media print{.user-bar{display:none!important}}
 
   /* Google Sheet 分頁快捷鈕 */
@@ -341,6 +348,7 @@
     <div class="user-bar" id="userBar" style="display:none">
       <span class="ub-icon">👤</span>
       <span class="ub-email" id="userEmail">—</span>
+      <a href="admin-bindings.html" class="ub-link" title="員工綁定管理">綁定</a>
       <button class="ub-logout" onclick="Cloud.logout().then(()=>location.href='login.html')">登出</button>
     </div>
 

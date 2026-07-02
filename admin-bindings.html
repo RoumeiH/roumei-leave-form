@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柔美飯店 · 員工綁定管理</title>
+<style>
+  :root{
+    --ink:#1a2b3c; --ink-soft:#54657a; --line:#d8e0e8; --line-soft:#eef2f6;
+    --bg:#f4f6f9; --paper:#ffffff;
+    --brand:#2b6cb0; --brand-dark:#1f4f82;
+    --accent:#c89b3c; --danger:#c53030; --ok:#2f9e6d;
+    --shadow:0 4px 20px rgba(26,43,60,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg);color:var(--ink);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* 頂部標題 */
+  .top{
+    background:linear-gradient(135deg,var(--brand-dark),var(--brand));
+    color:#fff;padding:22px 30px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  }
+  .top h1{
+    font-size:19px;font-weight:800;letter-spacing:.5px;
+    display:flex;align-items:center;gap:9px;
+  }
+  .top .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 3px rgba(200,155,60,.3)}
+  .top .actions{display:flex;gap:10px;align-items:center;font-size:13px}
+  .top .actions a{color:#fff;text-decoration:none;background:rgba(255,255,255,.15);
+    padding:6px 14px;border-radius:7px;font-weight:600;transition:.15s;font-size:12.5px}
+  .top .actions a:hover{background:rgba(255,255,255,.28)}
+  .top .user{opacity:.9;font-size:12px}
+
+  /* 主內容 */
+  .wrap{max-width:1200px;margin:0 auto;padding:22px 24px 40px}
+
+  /* 統計卡片 */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px 18px;box-shadow:var(--shadow)}
+  .stat .lb{font-size:12px;color:var(--ink-soft);font-weight:600;letter-spacing:.5px;margin-bottom:5px}
+  .stat .num{font-size:28px;font-weight:800;color:var(--brand-dark)}
+  .stat.warn .num{color:var(--accent)}
+  .stat.ok .num{color:var(--ok)}
+  .stat .sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+
+  /* 區塊標題 */
+  .sec-hd{
+    display:flex;align-items:center;justify-content:space-between;
+    margin:24px 0 12px;gap:10px;flex-wrap:wrap;
+  }
+  .sec-hd h2{
+    font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:8px;
+  }
+  .sec-hd h2 .cnt{
+    background:var(--brand);color:#fff;padding:3px 10px;border-radius:12px;
+    font-size:12px;font-weight:700;letter-spacing:.5px;
+  }
+  .sec-hd h2 .cnt.warn{background:var(--accent)}
+  .sec-hd h2 .cnt.ok{background:var(--ok)}
+  .sec-hd .refresh{
+    background:#fff;border:1px solid var(--line);color:var(--ink-soft);
+    padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;
+    font-family:inherit;transition:.15s;
+  }
+  .sec-hd .refresh:hover{border-color:var(--brand);color:var(--brand)}
+
+  /* 綁定卡片列表 */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+  .card{
+    background:#fff;border:1px solid var(--line);border-radius:11px;
+    padding:14px 16px;display:flex;gap:12px;align-items:center;box-shadow:var(--shadow);
+    transition:.15s;
+  }
+  .card:hover{border-color:var(--brand)}
+  .card.pending{border-left:4px solid var(--accent);background:#fffdf6}
+  .card.confirmed{border-left:4px solid var(--ok)}
+  .card .avatar{
+    width:48px;height:48px;border-radius:50%;background:#eee;flex-shrink:0;
+    overflow:hidden;display:grid;place-items:center;
+    color:#fff;font-weight:800;font-size:16px;
+  }
+  .card .avatar img{width:100%;height:100%;object-fit:cover}
+  .card .avatar.no-pic{background:var(--brand)}
+  .card .info{flex:1;min-width:0;overflow:hidden}
+  .card .name{font-size:15px;font-weight:700;color:var(--ink)}
+  .card .name small{color:var(--ink-soft);font-size:11.5px;font-weight:500;margin-left:3px}
+  .card .meta{font-size:11.5px;color:var(--ink-soft);margin-top:3px;line-height:1.5}
+  .card .meta b{color:var(--ink);font-weight:600}
+  .card .actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0}
+  .btn{
+    padding:6px 12px;border:none;border-radius:6px;
+    font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;
+    letter-spacing:.5px;transition:.15s;
+  }
+  .btn-ok{background:var(--ok);color:#fff}
+  .btn-ok:hover{background:#268a5f}
+  .btn-del{background:#fff;color:var(--danger);border:1px solid #f0d0d0}
+  .btn-del:hover{background:#fdecea}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .badge{
+    display:inline-block;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;
+    letter-spacing:.5px;margin-top:4px;
+  }
+  .badge.pending{background:#fff2d8;color:#8a5a10}
+  .badge.confirmed{background:#e6f6ed;color:var(--ok)}
+
+  /* 未綁定清單 */
+  .unbound-list{
+    background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 14px;
+    display:flex;flex-wrap:wrap;gap:8px;box-shadow:var(--shadow);
+  }
+  .unbound-item{
+    background:#fff8e6;border:1px solid #f0d488;color:#8a5a10;
+    padding:6px 12px;border-radius:6px;font-size:13px;font-weight:600;
+  }
+  .unbound-item small{color:#b8862c;font-weight:500;margin-left:4px}
+
+  /* 空狀態 */
+  .empty{
+    padding:30px 20px;text-align:center;color:var(--ink-soft);
+    background:#fff;border:1px dashed var(--line);border-radius:11px;
+    font-size:13px;
+  }
+  .empty .icon{font-size:32px;margin-bottom:8px}
+
+  /* 訊息 */
+  .msg{
+    padding:12px 16px;border-radius:9px;font-size:13.5px;font-weight:600;
+    margin-bottom:12px;line-height:1.6;
+  }
+  .msg.err{background:#fdecea;color:var(--danger)}
+  .msg.ok{background:#e6f6ed;color:var(--ok)}
+  .msg.info{background:#e6f3fb;color:var(--brand-dark)}
+
+  .loading{
+    text-align:center;padding:40px 20px;color:var(--ink-soft);font-size:13px;
+  }
+
+  @media(max-width:600px){
+    .top{padding:16px 18px}
+    .top h1{font-size:16px}
+    .wrap{padding:16px 14px 30px}
+    .cards{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1><span class="dot"></span>員工綁定管理</h1>
+  <div class="actions">
+    <span class="user" id="userInfo">—</span>
+    <a href="index.html">← 回假單工具</a>
+    <a href="#" onclick="doLogout();return false">登出</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="msgBox"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="lb">員工名單總數</div><div class="num" id="statTotal">—</div></div>
+    <div class="stat warn"><div class="lb">等待確認</div><div class="num" id="statPending">—</div><div class="sub">員工已申請,等您確認</div></div>
+    <div class="stat ok"><div class="lb">已完成綁定</div><div class="num" id="statOk">—</div><div class="sub">可接收 LINE 通知</div></div>
+    <div class="stat"><div class="lb">尚未綁定</div><div class="num" id="statUnbound">—</div><div class="sub">尚未加好友或未申請</div></div>
+  </div>
+
+  <div class="sec-hd">
+    <h2>⏳ 等待確認 <span class="cnt warn" id="cntPending">0</span></h2>
+    <button class="refresh" onclick="loadAll()">🔄 重新整理</button>
+  </div>
+  <div id="pendingList"></div>
+
+  <div class="sec-hd">
+    <h2>✅ 已完成綁定 <span class="cnt ok" id="cntConfirmed">0</span></h2>
+  </div>
+  <div id="confirmedList"></div>
+
+  <div class="sec-hd">
+    <h2>🕒 尚未綁定 <span class="cnt" id="cntUnbound">0</span></h2>
+  </div>
+  <div id="unboundList"></div>
+</div>
+
+<script type="module">
+  import { watchAuth, logout } from "./cloud.js";
+
+  // 未登入導向登入頁
+  watchAuth(user => {
+    if (!user) {
+      location.href = 'login.html';
+      return;
+    }
+    document.getElementById('userInfo').textContent = user.email || user.uid;
+    loadAll();
+  });
+
+  window.doLogout = async () => {
+    await logout();
+    location.href = 'login.html';
+  };
+
+  async function loadAll() {
+    try {
+      const res = await fetch('/api/bindings');
+      if (!res.ok) throw new Error('讀取失敗');
+      const data = await res.json();
+      render(data);
+    } catch (err) {
+      showMsg('err', '載入失敗:' + err.message);
+    }
+  }
+
+  function render(data) {
+    const bs = data.bindings || [];
+    const pending = bs.filter(b => !b.confirmed);
+    const confirmed = bs.filter(b => b.confirmed);
+    const unbound = data.unbound || [];
+
+    // 統計
+    document.getElementById('statTotal').textContent = data.rosterTotal;
+    document.getElementById('statPending').textContent = pending.length;
+    document.getElementById('statOk').textContent = confirmed.length;
+    document.getElementById('statUnbound').textContent = unbound.length;
+    document.getElementById('cntPending').textContent = pending.length;
+    document.getElementById('cntConfirmed').textContent = confirmed.length;
+    document.getElementById('cntUnbound').textContent = unbound.length;
+
+    // 待確認
+    document.getElementById('pendingList').innerHTML =
+      pending.length === 0
+        ? emptyBox('目前沒有待確認的綁定申請')
+        : `<div class="cards">${pending.map(cardHtml).join('')}</div>`;
+
+    // 已確認
+    document.getElementById('confirmedList').innerHTML =
+      confirmed.length === 0
+        ? emptyBox('尚無已完成綁定的員工')
+        : `<div class="cards">${confirmed.map(cardHtml).join('')}</div>`;
+
+    // 未綁定
+    document.getElementById('unboundList').innerHTML =
+      unbound.length === 0
+        ? emptyBox('全部員工都已完成綁定 🎉')
+        : `<div class="unbound-list">${unbound.map(u => `
+            <span class="unbound-item">
+              ${u.fullName}<small>(${u.empKey}·${u.dept})</small>
+            </span>`).join('')}</div>`;
+  }
+
+  function cardHtml(b) {
+    const cls = b.confirmed ? 'confirmed' : 'pending';
+    const badge = b.confirmed
+      ? '<span class="badge confirmed">✓ 已確認</span>'
+      : '<span class="badge pending">⏳ 待確認</span>';
+    const avatar = b.pictureUrl
+      ? `<div class="avatar"><img src="${b.pictureUrl}" alt=""></div>`
+      : `<div class="avatar no-pic">${b.fullName?.slice(0,1) || '?'}</div>`;
+    const boundAt = b.boundAt ? new Date(b.boundAt).toLocaleString('zh-TW',{hour12:false}) : '-';
+    const actions = b.confirmed
+      ? `<button class="btn btn-del" onclick="doDelete('${b.id}','${b.fullName}')">解除綁定</button>`
+      : `<button class="btn btn-ok" onclick="doConfirm('${b.id}','${b.fullName}')">確認</button>
+         <button class="btn btn-del" onclick="doDelete('${b.id}','${b.fullName}')">拒絕</button>`;
+    return `
+      <div class="card ${cls}">
+        ${avatar}
+        <div class="info">
+          <div class="name">${b.fullName || '(未知)'}<small>${b.empKey ? '('+b.empKey+')' : ''}</small></div>
+          <div class="meta">
+            <div>部門:<b>${b.dept || '-'}</b></div>
+            <div>LINE 顯示名:${b.lineName || '(未取得)'}</div>
+            <div>綁定時間:${boundAt}</div>
+          </div>
+          ${badge}
+        </div>
+        <div class="actions">${actions}</div>
+      </div>`;
+  }
+
+  function emptyBox(msg) {
+    return `<div class="empty"><div class="icon">📭</div>${msg}</div>`;
+  }
+
+  window.doConfirm = async (id, name) => {
+    if (!confirm(`確認「${name}」為此 LINE 帳號的員工?\n\n確認後系統會通知該員工。`)) return;
+    try {
+      const res = await fetch('/api/bindings?action=confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '確認失敗');
+      showMsg('ok', data.msg);
+      await loadAll();
+    } catch (err) {
+      showMsg('err', err.message);
+    }
+  };
+
+  window.doDelete = async (id, name) => {
+    if (!confirm(`確定要解除「${name}」的綁定?\n\n刪除後該員工將收到通知,可重新綁定。`)) return;
+    try {
+      const res = await fetch('/api/bindings?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '刪除失敗');
+      showMsg('ok', data.msg);
+      await loadAll();
+    } catch (err) {
+      showMsg('err', err.message);
+    }
+  };
+
+  function showMsg(type, text) {
+    document.getElementById('msgBox').innerHTML =
+      `<div class="msg ${type}">${text}</div>`;
+    setTimeout(() => {
+      const el = document.querySelector('.msg');
+      if (el) el.style.opacity = '0.6';
+    }, 4000);
+  }
+</script>
+</body>
+</html>
