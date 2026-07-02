@@ -818,19 +818,48 @@ function renderDrafts(){
           : `${s.startMon}/${s.startDay}–${s.endDay}`;
         return range;
       }).join(', ');
+
+      // 每段明細:日期 · 假別 · 可編輯時間
+      const segDetail = d.segments.map((s, si) => {
+        const range = (s.startMon===s.endMon && s.startDay===s.endDay)
+          ? `${s.startMon}/${s.startDay}`
+          : `${s.startMon}/${s.startDay}–${s.endMon===s.startMon?'':s.endMon+'/'}${s.endDay}`;
+        const reason = s.reason || '特休假';
+        const sh = s.shift || {};
+        const sH = (sh.start||':').split(':')[0]||'';
+        const sM = (sh.start||':').split(':')[1]||'';
+        const eH = (sh.end||':').split(':')[0]||'';
+        const eM = (sh.end||':').split(':')[1]||'';
+        return `
+        <div class="seg">
+          <span class="seg-date">${range}</span>
+          <span class="seg-reason">${reason}</span>
+          <span class="seg-time">
+            <input type="number" min="0" max="23" value="${sH}" onchange="updateSegmentHM(${i},${si},'start','h',this.value)" title="時" placeholder="時">
+            <span>:</span>
+            <input type="number" min="0" max="59" value="${sM}" onchange="updateSegmentHM(${i},${si},'start','m',this.value)" title="分" placeholder="分">
+            <span style="margin:0 3px">–</span>
+            <input type="number" min="0" max="23" value="${eH}" onchange="updateSegmentHM(${i},${si},'end','h',this.value)" title="時" placeholder="時">
+            <span>:</span>
+            <input type="number" min="0" max="59" value="${eM}" onchange="updateSegmentHM(${i},${si},'end','m',this.value)" title="分" placeholder="分">
+          </span>
+        </div>`;
+      }).join('');
+
       return `
-    <div class="draft-row multi">
-      <span class="dr-no">${displayIdx+1}</span>
-      <span class="dr-date multi">${d.segments.length}段</span>
-      <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
-      <span class="dr-type lv">合寫請假</span>
-      <span class="dr-detail multi-days" title="${segLines}">${segLines}</span>
-      <span class="dr-time" style="color:var(--ink-soft);font-size:12px">
-        合寫 ${d.segments.length} 段
-      </span>
-      <button class="dr-split" onclick="splitMultiDraft(${i})" title="拆成一天一張">拆開</button>
-      <button class="dr-line" onclick="pushOneToLine(${i})" title="推 LINE 給員工簽名">📱</button>
-      <button class="dr-del" onclick="removeDraft(${i})" title="刪除">✕</button>
+    <div class="multi-wrap">
+      <div class="draft-row multi">
+        <span class="dr-no">${displayIdx+1}</span>
+        <span class="dr-date multi">${d.segments.length}段</span>
+        <span class="dr-emp">${fullName(d.empKey)}<small>（${d.empKey}）</small></span>
+        <span class="dr-type lv">合寫請假</span>
+        <span class="dr-detail multi-days" title="${segLines}">${segLines}</span>
+        <span class="dr-time" style="color:var(--ink-soft);font-size:12px">合寫 ${d.segments.length} 段</span>
+        <button class="dr-split" onclick="splitMultiDraft(${i})" title="拆成一天一張">拆開</button>
+        <button class="dr-line" onclick="pushOneToLine(${i})" title="推 LINE 給員工簽名">📱</button>
+        <button class="dr-del" onclick="removeDraft(${i})" title="刪除">✕</button>
+      </div>
+      <div class="multi-segs">${segDetail}</div>
     </div>`;
     }
 
@@ -932,6 +961,21 @@ function updateDraftHM(idx, field, hm, value){
   d.shift = { ...d.shift, [field]: newTime };
   if(typeof syncUpdateDraft === 'function' && d._cloudId){
     syncUpdateDraft(d._cloudId, { shift: d.shift });
+  }
+}
+
+// 更新「合寫草稿」某一段的時或分(segIdx=第幾段, field='start'|'end', hm='h'|'m')
+function updateSegmentHM(draftIdx, segIdx, field, hm, value){
+  const d = BATCH_DRAFTS[draftIdx];
+  if(!d || !Array.isArray(d.segments) || !d.segments[segIdx]) return;
+  const seg = d.segments[segIdx];
+  const cur = seg.shift?.[field] || '00:00';
+  const [h, m] = cur.split(':');
+  const newH = (hm === 'h') ? String(Math.max(0, Math.min(23, parseInt(value)||0))).padStart(2,'0') : h;
+  const newM = (hm === 'm') ? String(Math.max(0, Math.min(59, parseInt(value)||0))).padStart(2,'0') : m;
+  seg.shift = { ...seg.shift, [field]: `${newH}:${newM}` };
+  if(typeof syncUpdateDraft === 'function' && d._cloudId){
+    syncUpdateDraft(d._cloudId, { segments: d.segments });
   }
 }
 

@@ -359,6 +359,19 @@
   .dr-date.multi{background:#d8a55a;color:#fff;text-align:center;padding:4px 6px;border-radius:6px;font-weight:700;font-size:12px}
   .dr-detail.multi-days{font-family:monospace;font-size:13px;color:#8a5a10;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 
+  /* 合寫草稿：每段明細(假別 + 可編輯時間) */
+  .multi-wrap{border-bottom:1px solid var(--line-soft);border-left:3px solid #d8a55a}
+  .multi-wrap:last-child{border-bottom:none}
+  .multi-wrap .draft-row.multi{border-bottom:none;border-left:none}
+  .multi-segs{background:#fbf7ec;padding:2px 20px 12px 66px;display:flex;flex-direction:column;gap:7px}
+  .multi-segs .seg{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+  .multi-segs .seg-date{min-width:92px;font-weight:700;color:#8a5a10;font-family:monospace}
+  .multi-segs .seg-reason{background:#fff;border:1px solid #e6d3ad;color:#8a5a10;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:700}
+  .multi-segs .seg-time{display:flex;align-items:center;gap:2px}
+  .multi-segs .seg-time input{width:44px;padding:5px 4px;border:1px solid var(--line);border-radius:5px;font-size:13px;text-align:center;-moz-appearance:textfield;background:#fff}
+  .multi-segs .seg-time input::-webkit-outer-spin-button,.multi-segs .seg-time input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .multi-segs .seg-time span{color:var(--ink-soft);font-size:12px}
+
   /* 多段式假單版面 */
   .form-unit.v2.multi-leave .fu-nm{font-size:22px;letter-spacing:8px}
   table.ft.v2.multi td{padding:5px 8px;font-size:13.5px;line-height:1.55}
