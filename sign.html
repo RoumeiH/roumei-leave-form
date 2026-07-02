@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>柔美飯店假單 · 簽名</title>
+<style>
+  :root{
+    --ink:#1a2b3c; --ink-soft:#54657a; --line:#d8e0e8;
+    --bg:#f4f6f9; --paper:#ffffff;
+    --brand:#2b6cb0; --brand-dark:#1f4f82;
+    --accent:#c89b3c; --danger:#c53030; --ok:#2f9e6d;
+    --shadow:0 4px 20px rgba(26,43,60,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{min-height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    -webkit-font-smoothing:antialiased;overscroll-behavior:none;}
+  body{padding-bottom:20px}
+
+  .head{
+    background:linear-gradient(135deg,var(--brand-dark),var(--brand));
+    color:#fff;padding:22px 22px 18px;text-align:center;
+  }
+  .head h1{font-size:19px;font-weight:800;letter-spacing:.5px;
+    display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
+  .head .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 3px rgba(200,155,60,.3)}
+  .head p{font-size:12px;opacity:.85;margin-top:5px;letter-spacing:1px}
+
+  .container{padding:16px 16px 0;max-width:600px;margin:0 auto}
+
+  /* 假單內容卡 */
+  .form-card{
+    background:#fff;border:2px solid var(--brand-dark);border-radius:11px;
+    padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow);
+  }
+  .form-card .fc-title{
+    text-align:center;font-size:18px;font-weight:800;letter-spacing:6px;
+    color:var(--brand-dark);padding-bottom:10px;margin-bottom:14px;
+    border-bottom:2px solid var(--brand-dark);
+  }
+  .form-card .row{
+    display:flex;padding:8px 0;border-bottom:1px solid #eaf0f5;font-size:14px;line-height:1.7;
+  }
+  .form-card .row:last-child{border-bottom:none}
+  .form-card .row .lb{
+    width:76px;flex-shrink:0;font-weight:700;color:var(--ink-soft);letter-spacing:2px;
+  }
+  .form-card .row .val{
+    flex:1;color:var(--ink);font-weight:600;word-break:break-all;
+  }
+  .form-card .row .val.big{font-size:16px;font-weight:800;letter-spacing:1px}
+  .form-card .seg-list{margin-top:2px}
+  .form-card .seg{padding:5px 0;border-bottom:1px dashed #eaf0f5;font-size:13.5px}
+  .form-card .seg:last-child{border-bottom:none}
+
+  /* 簽名區 */
+  .sign-area{
+    background:#fff;border:2px solid var(--line);border-radius:11px;
+    padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow);
+  }
+  .sign-area .sa-title{
+    display:flex;justify-content:space-between;align-items:center;
+    font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:8px;
+  }
+  .sign-area .sa-title small{
+    font-size:11px;color:var(--ink-soft);font-weight:500;letter-spacing:.5px;
+  }
+  canvas.pad{
+    display:block;width:100%;height:180px;
+    background:#fefefe;border:1px dashed var(--line);border-radius:8px;
+    touch-action:none;cursor:crosshair;
+  }
+  .sa-clear{
+    display:inline-block;margin-top:8px;
+    padding:5px 12px;background:#fff;border:1px solid var(--line);
+    border-radius:6px;font-size:12px;color:var(--ink-soft);cursor:pointer;
+    font-family:inherit;font-weight:600;
+  }
+  .sa-clear:hover{background:#f7fafc}
+
+  /* 送出按鈕 */
+  .submit-bar{
+    padding:8px 0 4px;
+  }
+  .btn-submit{
+    width:100%;padding:15px;background:var(--brand);color:#fff;
+    border:none;border-radius:10px;font-size:16px;font-weight:800;
+    cursor:pointer;font-family:inherit;letter-spacing:3px;
+    box-shadow:0 2px 8px rgba(43,108,176,.35);transition:.15s;
+  }
+  .btn-submit:disabled{background:#c0d0e0;cursor:not-allowed;box-shadow:none}
+  .btn-submit:active:not(:disabled){transform:scale(.98)}
+
+  /* 狀態訊息 */
+  .msg{
+    padding:14px 16px;border-radius:9px;font-size:14px;font-weight:600;
+    margin-bottom:12px;line-height:1.7;
+  }
+  .msg.err{background:#fdecea;color:var(--danger)}
+  .msg.ok{background:#e6f6ed;color:var(--ok)}
+  .msg.info{background:#e6f3fb;color:var(--brand-dark)}
+  .msg.warn{background:#fff8e6;color:#8a5a10;border:1px solid #f0d488}
+
+  .loading{
+    text-align:center;padding:60px 20px;color:var(--ink-soft);font-size:14px;
+  }
+  .loading .spin{
+    display:inline-block;width:30px;height:30px;border:3px solid #eef4fa;
+    border-top-color:var(--brand);border-radius:50%;
+    animation:spin 1s linear infinite;margin-bottom:12px;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* 已簽名的確認頁 */
+  .done-card{
+    background:#fff;border-radius:11px;padding:32px 22px;text-align:center;
+    box-shadow:var(--shadow);margin:20px 16px;
+  }
+  .done-card .big{font-size:60px;color:var(--ok);margin-bottom:12px}
+  .done-card h2{font-size:19px;color:var(--ink);margin-bottom:8px;letter-spacing:1px}
+  .done-card p{font-size:13.5px;color:var(--ink-soft);line-height:1.7}
+  .done-card .time{
+    display:inline-block;margin-top:12px;padding:6px 14px;
+    background:#e6f6ed;color:var(--ok);border-radius:6px;font-size:12.5px;font-weight:700;
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1><span class="dot"></span>柔美飯店假單 · 簽名</h1>
+  <p>Beauty Hotels · Sign</p>
+</div>
+
+<div id="root">
+  <div class="loading">
+    <div class="spin"></div>
+    <div>載入假單中...</div>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const formId = params.get('id');
+let formData = null;
+let canvas, ctx;
+let drawing = false;
+let hasDrawn = false;
+
+const KIND_LABEL = {
+  leave: '請假單',
+  ot: '加班單',
+  miss: '未刷卡證明單',
+  wrong: '休假誤刷證明',
+  multiLeave: '請假單(多段)',
+};
+
+const REASON_LABEL = {
+  leave: '請假事由',
+  ot: '加班類型',
+  miss: '未刷卡',
+  wrong: '誤刷時間',
+  multiLeave: '請假事由',
+};
+
+window.onload = async () => {
+  if (!formId) {
+    showMsg('err', '缺少必要參數,請從 LINE 訊息中的連結進入本頁。');
+    return;
+  }
+  await loadForm();
+};
+
+async function loadForm() {
+  try {
+    const res = await fetch('/api/sign?id=' + encodeURIComponent(formId));
+    if (!res.ok) {
+      const data = await res.json().catch(()=>({}));
+      throw new Error(data.error || '載入失敗');
+    }
+    formData = await res.json();
+
+    if (formData.alreadySigned) {
+      renderDone();
+    } else {
+      renderSignPage();
+    }
+  } catch (err) {
+    showMsg('err', '載入假單失敗:' + err.message);
+  }
+}
+
+function renderSignPage() {
+  const Y = formData.rocYear;
+  const kind = KIND_LABEL[formData.type] || '假單';
+  const dept = formData.dept || '';
+
+  // 日期/時間顯示
+  let dateHtml = '';
+  if (formData.type === 'multiLeave' && formData.segments) {
+    dateHtml = `
+      <div class="row">
+        <div class="lb">日期</div>
+        <div class="val">
+          <div class="seg-list">
+            ${formData.segments.map(s => {
+              const range = (s.startMon===s.endMon && s.startDay===s.endDay)
+                ? `${Y}/${s.startMon}/${s.startDay}`
+                : `${Y}/${s.startMon}/${s.startDay} – ${s.endMon}/${s.endDay}`;
+              const time = s.shift ? ` (${s.shift.start}–${s.shift.end})` : '';
+              return `<div class="seg">📅 ${range}${time}</div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    const endMon = formData.endMon || formData.mon;
+    const endDay = formData.endDay || formData.day;
+    const isRange = (formData.mon !== endMon) || (formData.day !== endDay);
+    const dateStr = isRange
+      ? `${Y}/${formData.mon}/${formData.day} – ${endMon}/${endDay}`
+      : `${Y}/${formData.mon}/${formData.day}`;
+    const sh = formData.shift;
+    const timeStr = sh ? `${sh.start} – ${sh.end}` : '—';
+    dateHtml = `
+      <div class="row">
+        <div class="lb">日期</div>
+        <div class="val big">${dateStr}</div>
+      </div>
+      <div class="row">
+        <div class="lb">時間</div>
+        <div class="val">${timeStr}</div>
+      </div>
+    `;
+  }
+
+  // 事由/類型
+  const reasonText = formData.type === 'ot'
+    ? (formData.comp === '加班費' ? '加班費' : '補休')
+    : (formData.reason || '');
+
+  document.getElementById('root').innerHTML = `
+    <div class="container">
+      <div class="form-card">
+        <div class="fc-title">${kind}</div>
+        <div class="row">
+          <div class="lb">姓名</div>
+          <div class="val big">${formData.fullName || formData.empKey}</div>
+        </div>
+        <div class="row">
+          <div class="lb">職稱</div>
+          <div class="val">${dept}</div>
+        </div>
+        ${dateHtml}
+        ${reasonText ? `
+        <div class="row">
+          <div class="lb">${REASON_LABEL[formData.type] || '事由'}</div>
+          <div class="val">${reasonText}</div>
+        </div>` : ''}
+      </div>
+
+      <div class="msg info">
+        📝 請確認以上內容無誤,並在下方簽名欄簽名後送出。
+      </div>
+
+      <div class="sign-area">
+        <div class="sa-title">
+          <span>本人簽名</span>
+          <small>用手指或觸控筆</small>
+        </div>
+        <canvas class="pad" id="pad"></canvas>
+        <button class="sa-clear" onclick="clearPad()">清除重簽</button>
+      </div>
+
+      <div class="submit-bar">
+        <button class="btn-submit" id="btnSubmit" onclick="submitSign()">確認並送出簽名</button>
+      </div>
+    </div>
+  `;
+
+  setTimeout(initPad, 50);
+}
+
+function initPad() {
+  canvas = document.getElementById('pad');
+  if (!canvas) return;
+  // 設定 canvas 像素大小(考慮 devicePixelRatio 才不糊)
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#1a2b3c';
+  ctx.lineWidth = 2.5;
+
+  // 事件
+  ['mousedown','touchstart'].forEach(e => canvas.addEventListener(e, startDraw));
+  ['mousemove','touchmove'].forEach(e => canvas.addEventListener(e, doDraw));
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(e => canvas.addEventListener(e, endDraw));
+}
+
+function getPos(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const e = evt.touches ? evt.touches[0] : evt;
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function startDraw(e) {
+  e.preventDefault();
+  drawing = true;
+  hasDrawn = true;
+  const p = getPos(e);
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+}
+
+function doDraw(e) {
+  if (!drawing) return;
+  e.preventDefault();
+  const p = getPos(e);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
+}
+
+function endDraw(e) {
+  if (drawing) e.preventDefault?.();
+  drawing = false;
+}
+
+function clearPad() {
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasDrawn = false;
+}
+
+async function submitSign() {
+  if (!hasDrawn) {
+    alert('請先簽名');
+    return;
+  }
+  if (!confirm('確定送出簽名?送出後無法修改。')) return;
+
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.textContent = '送出中...';
+
+  try {
+    // 產生 PNG base64(壓縮:白底、縮成 400px 寬)
+    const dataUrl = compressSignature(canvas);
+
+    const res = await fetch('/api/sign?action=submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: formId, signature: dataUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '送出失敗');
+    // 成功 → 顯示完成頁
+    formData.alreadySigned = true;
+    formData.employeeSignedAt = new Date().toISOString();
+    renderDone();
+  } catch (err) {
+    alert('送出失敗:' + err.message);
+    btn.disabled = false;
+    btn.textContent = '確認並送出簽名';
+  }
+}
+
+// 壓縮簽名圖:縮到 400px 寬 + 白底 + PNG
+function compressSignature(srcCanvas) {
+  const targetW = 400;
+  const ratio = targetW / srcCanvas.width;
+  const targetH = Math.round(srcCanvas.height * ratio);
+  const c2 = document.createElement('canvas');
+  c2.width = targetW;
+  c2.height = targetH;
+  const c2ctx = c2.getContext('2d');
+  c2ctx.fillStyle = '#fff';
+  c2ctx.fillRect(0, 0, targetW, targetH);
+  c2ctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
+  return c2.toDataURL('image/png');
+}
+
+function renderDone() {
+  const signedTime = formData.employeeSignedAt
+    ? new Date(formData.employeeSignedAt).toLocaleString('zh-TW', { hour12: false })
+    : '';
+  document.getElementById('root').innerHTML = `
+    <div class="done-card">
+      <div class="big">✅</div>
+      <h2>簽名完成</h2>
+      <p>感謝您完成假單簽名<br>假單將由主管進行後續簽核</p>
+      ${signedTime ? `<div class="time">簽名時間: ${signedTime}</div>` : ''}
+    </div>
+  `;
+}
+
+function showMsg(type, text) {
+  document.getElementById('root').innerHTML = `
+    <div class="container">
+      <div class="msg ${type}">${text}</div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
