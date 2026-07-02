@@ -830,6 +830,7 @@ function renderDrafts(){
         合寫 ${d.segments.length} 段
       </span>
       <button class="dr-split" onclick="splitMultiDraft(${i})" title="拆成一天一張">拆開</button>
+      <button class="dr-line" onclick="pushOneToLine(${i})" title="推 LINE 給員工簽名">📱</button>
       <button class="dr-del" onclick="removeDraft(${i})" title="刪除">✕</button>
     </div>`;
     }
@@ -858,6 +859,7 @@ function renderDrafts(){
         <input type="number" min="0" max="59" value="${(sh.end||':').split(':')[1]||''}" onchange="updateDraftHM(${i},'end','m',this.value)" title="分" placeholder="分">
       </span>
       <span class="dr-src" title="原班表：${d.sourceCode}">${d.sourceCode}</span>
+      <button class="dr-line" onclick="pushOneToLine(${i})" title="推 LINE 給員工簽名">📱</button>
       <button class="dr-del" onclick="removeDraft(${i})" title="刪除">✕</button>
     </div>`;
   }).join('');
@@ -874,6 +876,9 @@ function renderDrafts(){
           <button class="btn-sort ${BATCH_SORT==='date'?'on':''}" onclick="setBatchSort('date')">依日期</button>
           <button class="btn-sort ${BATCH_SORT==='emp'?'on':''}" onclick="setBatchSort('emp')">依人名</button>
           <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="clearDrafts()">清空</button>
+          <button class="btn btn-line btn-sm" onclick="pushAllToLine()" title="全部推播給員工簽名">
+            📱 全部推 LINE（${BATCH_DRAFTS.length}）
+          </button>
           <button class="btn btn-primary btn-sm" onclick="addAllDraftsToPrintList()">
             ＋ 全部加入列印清單（${BATCH_DRAFTS.length}）
           </button>
@@ -1000,6 +1005,106 @@ function daysBetween(sMon, sDay, eMon, eDay){
   const a = new Date(2000, sMon-1, sDay);
   const b = new Date(2000, eMon-1, eDay);
   return Math.round((b - a) / (1000*60*60*24)) + 1;
+}
+
+/* =========================================================
+   推播草稿到 LINE 給員工簽名
+   ========================================================= */
+
+// 把草稿轉成 API 需要的 form 資料
+function draftToFormPayload(d){
+  return {
+    empKey: d.empKey,
+    fullName: fullName(d.empKey),
+    dept: deptOf(d.empKey),
+    type: d.type,
+    mon: d.mon,
+    day: d.day,
+    endMon: d.endMon || null,
+    endDay: d.endDay || null,
+    mergedCount: d.mergedCount || null,
+    segments: d.segments || null,
+    shift: d.shift || null,
+    reason: d.reason || null,
+    comp: d.comp || null,
+    sourceCode: d.sourceCode || '',
+    rocYear: rocY(),
+  };
+}
+
+// 推播單張到 LINE
+async function pushOneToLine(idx){
+  const d = BATCH_DRAFTS[idx];
+  if(!d) return;
+  const name = fullName(d.empKey);
+  if(!confirm(`確定推播「${name}」的假單到 LINE?\n對方會收到 LINE 訊息,點連結進去簽名。`)) return;
+
+  try{
+    const res = await fetch('/api/forms?action=create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draftToFormPayload(d)),
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || '推播失敗');
+    alert(`✅ 已推播給 ${name}`);
+    // 推完可以選:刪掉這筆草稿(避免重推)
+    removeDraft(idx);
+  }catch(err){
+    alert(`❌ 推播失敗: ${err.message}`);
+  }
+}
+
+// 一鍵全部推播
+async function pushAllToLine(){
+  if(BATCH_DRAFTS.length === 0){ alert('沒有草稿可以推播'); return; }
+  if(!confirm(`確定要一次推播 ${BATCH_DRAFTS.length} 張假單到 LINE?\n\n每位員工會收到自己的假單通知,可以隨時簽名。`)) return;
+
+  const btn = event?.target;
+  if(btn) btn.disabled = true;
+
+  try{
+    const payload = { forms: BATCH_DRAFTS.map(draftToFormPayload) };
+    const res = await fetch('/api/forms?action=batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || '推播失敗');
+
+    // 顯示結果
+    const okCount = data.okCount || 0;
+    const failCount = data.failCount || 0;
+    let msg = `✅ 成功推播 ${okCount} 張`;
+    if(failCount > 0){
+      msg += `\n❌ 失敗 ${failCount} 張:\n`;
+      const fails = (data.results || []).filter(r => !r.ok);
+      msg += fails.map(r => `• ${fullName(r.empKey)}: ${r.error}`).join('\n');
+    }
+    alert(msg);
+
+    // 只清掉成功的
+    if(okCount > 0){
+      const failKeys = new Set((data.results||[]).filter(r => !r.ok).map(r => r.empKey));
+      const remain = [];
+      const toDelete = [];
+      for(const d of BATCH_DRAFTS){
+        if(failKeys.has(d.empKey)) remain.push(d);
+        else if(d._cloudId) toDelete.push(d._cloudId);
+      }
+      BATCH_DRAFTS = remain;
+      renderDrafts();
+      // 從雲端清掉已推的
+      if(typeof syncDeleteDraft === 'function'){
+        for(const id of toDelete) syncDeleteDraft(id);
+      }
+    }
+  }catch(err){
+    alert(`❌ 推播失敗: ${err.message}`);
+  }finally{
+    if(btn) btn.disabled = false;
+  }
 }
 
 // 把所有草稿一次加進列印清單
