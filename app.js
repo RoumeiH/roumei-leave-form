@@ -2464,3 +2464,127 @@ function renderRecentUrls(){
     </span>
   `).join('') + '<div class="gs-tab-hint">💡 雙擊快捷鈕或按 ✎ 改名(例如 7月、8月)</div>';
 }
+
+/* ==========================================================================
+   成品假單檢視 / 列印(?viewForm=<formId>)
+   由追蹤後台「看假單」開啟,用現成的 renderDraftAsForm 畫出跟列印版一模一樣
+   的版面,再把員工簽名疊到「申請人」欄、主管簽名疊到「權責主管/單位主管」欄,
+   最後用瀏覽器列印/存 PDF。
+   ========================================================================== */
+function initFormView(){
+  const vfId = new URLSearchParams(location.search).get('viewForm');
+  if(!vfId) return;
+  document.body.classList.add('viewform-mode');   // 用 CSS 隱藏正常開單介面
+  let tries = 0;
+  const wait = () => {
+    if(window.Cloud && typeof window.Cloud.getFormById === 'function'){
+      renderCompletedFormView(vfId);
+    }else if(tries++ < 60){
+      setTimeout(wait, 100);
+    }else{
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#c53030">連線逾時,請確認已登入後重新整理。</div>';
+    }
+  };
+  wait();
+}
+
+async function renderCompletedFormView(id){
+  let f;
+  try{
+    f = await window.Cloud.getFormById(id);
+  }catch(e){
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#c53030">讀取失敗:'+ (e.message||e) +'<br><br>請確認已登入。</div>';
+    return;
+  }
+  if(!f){
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif">找不到這張假單(可能已被刪除)。</div>';
+    return;
+  }
+
+  // 設定民國年,讓 rocY() 讀到正確年份
+  const ry = document.getElementById('rocYear');
+  if(ry) ry.value = f.rocYear || 115;
+
+  // 組出 renderDraftAsForm 需要的 draft-like 物件
+  const d = {
+    empKey: f.empKey,
+    dayKey: f.dayKey || `${f.mon}/${f.day}`,
+    mon: f.mon, day: f.day,
+    type: f.type,
+    reason: f.reason, comp: f.comp,
+    shift: f.shift,
+    endMon: f.endMon, endDay: f.endDay,
+    mergedCount: f.mergedCount,
+    segments: f.segments,
+    sourceCode: f.sourceCode || '',
+  };
+
+  let formHtml;
+  try{
+    formHtml = renderDraftAsForm(d);
+  }catch(e){
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#c53030">產生假單版面失敗:'+ (e.message||e) +'</div>';
+    return;
+  }
+
+  // 疊上簽名
+  const box = document.createElement('div');
+  box.innerHTML = formHtml;
+  overlaySignatures(box, f.employeeSignatureData, f.supervisorSignatureData);
+  const finalHtml = box.innerHTML;
+  window.__fvHtml = finalHtml;
+
+  const who = (typeof fullName === 'function' ? fullName(f.empKey) : f.empKey) || f.fullName || '';
+  const statusNote = f.status === 'completed'
+    ? '<span style="color:#2f9e6d">✓ 已完成(員工 + 主管皆已簽名)</span>'
+    : (f.status === 'employee_signed' ? '<span style="color:#c89b3c">員工已簽,待主管簽核</span>' : '');
+
+  const root = document.createElement('div');
+  root.id = 'formViewRoot';
+  root.innerHTML = `
+    <div class="fv-bar no-print">
+      <button class="fv-back" onclick="location.href='/admin-forms.html'">← 返回追蹤</button>
+      <div class="fv-title">${who} · ${f.mon}/${f.day} 假單　<span class="fv-status">${statusNote}</span></div>
+      <button class="fv-print" onclick="printCurrentForm()">🖨 列印 / 存 PDF</button>
+    </div>
+    <div class="fv-sheet">${finalHtml}</div>`;
+  document.body.appendChild(root);
+}
+
+// 把兩個簽名疊到成品假單對應的簽名欄
+function overlaySignatures(container, empSig, supSig){
+  const cells = container.querySelectorAll('.sign-row td');
+  cells.forEach(td => {
+    const norm = (td.textContent || '').replace(/[\s\u3000]/g, '');   // 去掉空白/全形空白
+    if(empSig && norm.indexOf('申請人') !== -1){
+      td.insertAdjacentHTML('beforeend', ` <img src="${empSig}" class="sig-img" alt="員工簽名">`);
+    }else if(supSig && (norm.indexOf('權責主管') !== -1 || norm.indexOf('單位主管') !== -1)){
+      td.insertAdjacentHTML('beforeend', ` <img src="${supSig}" class="sig-img" alt="主管簽名">`);
+    }
+    // 副總經理 / 館店最高主管審核 → 留空(我們流程沒有這層級)
+  });
+}
+
+// 列印:開新視窗,套用本頁所有樣式,只印這張假單
+function printCurrentForm(){
+  const w = window.open('', '_blank');
+  if(!w){ alert('瀏覽器擋掉了列印視窗,請允許彈出視窗後再試。'); return; }
+  const styles = Array.from(document.querySelectorAll('style')).map(s => s.outerHTML).join('');
+  w.document.write(
+    '<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + styles
+    + '<style>body{background:#fff;margin:0;padding:10mm}'
+    + '.sig-img{height:42px;vertical-align:middle;margin-left:6px}'
+    + '@media print{body{padding:0}}</style>'
+    + '</head><body>' + (window.__fvHtml || '') + '</body></html>'
+  );
+  w.document.close();
+  setTimeout(() => { try{ w.focus(); w.print(); }catch(e){} }, 500);
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initFormView);
+}else{
+  initFormView();
+}

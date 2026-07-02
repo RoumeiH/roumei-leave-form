@@ -374,7 +374,7 @@
       }else if(cat==='signed'){
         op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">看簽名</button>`;
       }else if(cat==='completed'){
-        op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">看假單</button>`;
+        op = `<button class="btn btn-view" onclick="window.open('/?viewForm=${f.id}','_blank')">看假單</button>`;
       }else if(cat==='rejected'){
         op = `<button class="btn btn-del2" onclick="doDeleteForm('${f.id}','${esc(name)}')">刪除</button>`;
       }else{
@@ -422,7 +422,14 @@
       const res = await fetch('/api/forms?action=notifySupervisors',{ method:'POST' });
       const data = await res.json();
       if(!res.ok || data.ok===false) throw new Error(data.error||'推送失敗');
-      showMsg('ok',`已通知 ${data.supCount} 位主管(共 ${data.count} 張待簽核)`);
+      const fails = (data.results||[]).filter(r=>!r.ok);
+      if(data.supCount>0 && fails.length===0){
+        showMsg('ok',`✅ 已成功通知 ${data.supCount} 位主管(共 ${data.count} 張待簽核)`);
+      }else if(data.supCount>0){
+        showMsg('info',`部分成功:通知 ${data.supCount} 位、失敗 ${fails.length} 位。失敗:${fails.map(f=>`${f.name}(${f.error})`).join('、')}`);
+      }else{
+        showMsg('err',`推播全部失敗(共 ${data.supTotal} 位主管)。原因:${fails.map(f=>`${f.name}(${f.error})`).join('、') || '未知'}`);
+      }
     }catch(err){ showMsg('err',err.message); }
   };
 
