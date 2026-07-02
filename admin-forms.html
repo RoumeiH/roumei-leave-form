@@ -104,6 +104,7 @@
   .st-signed{background:#eef8f0;color:#2e7d43;border:1px solid #bfe3c8}
   .st-completed{background:#e6f3fb;color:var(--brand-dark);border:1px solid #b9d8ef}
   .st-archived{background:#f1f3f6;color:#9aa3ad;border:1px solid #e2e6ea}
+  .st-rejected{background:#fdecea;color:#c53030;border:1px solid #f0c0c0}
 
   .btn{padding:6px 12px;border:none;border-radius:7px;font-size:12px;font-weight:700;
     cursor:pointer;font-family:inherit;transition:.15s}
@@ -114,6 +115,8 @@
   .btn-repush:hover{background:#fdf6e6}
   .btn-view{background:#eef4fa;color:var(--brand-dark)}
   .btn-view:hover{background:#e0ecf7}
+  .btn-del2{background:#fff;color:var(--danger);border:1px solid #f0d0d0}
+  .btn-del2:hover{background:#fdecea}
 
   .empty{padding:38px 20px;text-align:center;color:var(--ink-soft);font-size:13px}
   .empty .icon{font-size:34px;margin-bottom:8px}
@@ -207,7 +210,7 @@
 </div>
 
 <script type="module">
-  import { watchAuth, logout, getFormById } from "./cloud.js";
+  import { watchAuth, logout, getFormById, deleteFormById } from "./cloud.js";
 
   /* ---------- 名單(顯示用備援,若假單已存 fullName/dept 則以其為主) ---------- */
   const ROSTER = {
@@ -229,6 +232,7 @@
     pushed:    {label:'已推等待簽', cls:'st-pushed'},
     signed:    {label:'員工已簽',   cls:'st-signed'},
     completed: {label:'完成',       cls:'st-completed'},
+    rejected:  {label:'已駁回',     cls:'st-rejected'},
     archived:  {label:'已歸檔',     cls:'st-archived'},
   };
 
@@ -237,6 +241,7 @@
     {key:'unpushed', label:'未推'},
     {key:'pushed',   label:'已推等待簽'},
     {key:'signed',   label:'已簽'},
+    {key:'rejected', label:'已駁回'},
     {key:'completed',label:'完成'},
   ];
 
@@ -248,6 +253,7 @@
   function classify(f){
     if(f.status==='employee_signed') return 'signed';
     if(f.status==='completed') return 'completed';
+    if(f.status==='rejected') return 'rejected';
     if(f.status==='archived') return 'archived';
     return f.lastPushAt ? 'pushed' : 'unpushed';   // pending_employee
   }
@@ -346,15 +352,27 @@
       const cat = classify(f);
       const meta = STATUS_META[cat];
       const rowCls = (cat==='unpushed'||cat==='pushed') ? 'row-pending' : '';
-      const sub = f.shift ? `<div class="f-sub">${esc(f.shift)}</div>` : '';
+      const shiftText = f.shift
+        ? (typeof f.shift === 'string' ? f.shift
+           : ((f.shift.start || f.shift.end) ? `${f.shift.start||''}–${f.shift.end||''}` : ''))
+        : '';
+      let sub = shiftText ? `<div class="f-sub">${esc(shiftText)}</div>` : '';
+      // 駁回原因顯示在副標
+      if(cat==='rejected' && f.rejectReason){
+        sub += `<div class="f-sub" style="color:var(--danger)">駁回原因:${esc(f.rejectReason)}${f.rejectedByName?`(${esc(f.rejectedByName)})`:''}</div>`;
+      }
 
       let op = '';
       if(cat==='unpushed'){
         op = `<button class="btn btn-push" onclick="doRepush('${esc(f.empKey)}','${esc(name)}')">推送</button>`;
       }else if(cat==='pushed'){
         op = `<button class="btn btn-repush" onclick="doRepush('${esc(f.empKey)}','${esc(name)}')">重新推送</button>`;
-      }else if(cat==='signed'||cat==='completed'){
+      }else if(cat==='signed'){
         op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">看簽名</button>`;
+      }else if(cat==='completed'){
+        op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">看假單</button>`;
+      }else if(cat==='rejected'){
+        op = `<button class="btn btn-del2" onclick="doDeleteForm('${f.id}','${esc(name)}')">刪除</button>`;
       }else{
         op = `<span style="color:var(--ink-soft);font-size:12px">—</span>`;
       }
@@ -406,28 +424,51 @@
     }catch(err){ showMsg('err',err.message); }
   };
 
-  /* ---------- 看簽名 ---------- */
+  /* ---------- 看簽名 / 看假單 ---------- */
   window.viewSign = async(id,name)=>{
     document.getElementById('modalTitle').textContent = `${name} 的簽名`;
     document.getElementById('modalBody').innerHTML = '<div style="color:#54657a;font-size:13px">讀取中…</div>';
     document.getElementById('modalBg').classList.add('show');
     try{
       const f = await getFormById(id);
-      if(!f || !f.employeeSignatureData){
-        document.getElementById('modalBody').innerHTML = '<div style="color:#c53030;font-size:13px">找不到簽名資料</div>';
-        return;
+      if(!f){ document.getElementById('modalBody').innerHTML = '<div style="color:#c53030;font-size:13px">找不到假單</div>'; return; }
+      const toDate = (t)=> t?.toDate ? t.toDate() : (t?._seconds ? new Date(t._seconds*1000) : null);
+      const empWhen = toDate(f.employeeSignedAt);
+      const supWhen = toDate(f.supervisorSignedAt);
+
+      let html = `<div class="meta" style="margin:0 0 10px;font-weight:700">${esc(typeLabel(f))} · ${esc(dateStr(f))}</div>`;
+
+      // 員工簽名
+      if(f.employeeSignatureData){
+        html += `<div style="font-size:12px;color:#54657a;font-weight:700;margin:8px 0 4px">員工簽名</div>
+                 <img src="${f.employeeSignatureData}" alt="員工簽名">`;
+        if(empWhen) html += `<div class="meta">簽名時間 ${empWhen.toLocaleString('zh-TW',{hour12:false})}</div>`;
       }
-      const when = f.employeeSignedAt?.toDate ? f.employeeSignedAt.toDate()
-                 : (f.employeeSignedAt?._seconds ? new Date(f.employeeSignedAt._seconds*1000) : null);
-      const whenStr = when ? when.toLocaleString('zh-TW',{hour12:false}) : '';
-      document.getElementById('modalBody').innerHTML =
-        `<img src="${f.employeeSignatureData}" alt="簽名">
-         <div class="meta">${esc(typeLabel(f))} · ${esc(dateStr(f))}${whenStr?` · 簽名時間 ${whenStr}`:''}</div>`;
+      // 主管簽名(完成才有)
+      if(f.supervisorSignatureData){
+        html += `<div style="font-size:12px;color:#4b3b78;font-weight:700;margin:14px 0 4px">主管簽核(${esc(f.supervisorName||'')})</div>
+                 <img src="${f.supervisorSignatureData}" alt="主管簽名">`;
+        if(supWhen) html += `<div class="meta">簽核時間 ${supWhen.toLocaleString('zh-TW',{hour12:false})}</div>`;
+      }
+      if(!f.employeeSignatureData && !f.supervisorSignatureData){
+        html = '<div style="color:#c53030;font-size:13px">找不到簽名資料</div>';
+      }
+      document.getElementById('modalBody').innerHTML = html;
     }catch(err){
       document.getElementById('modalBody').innerHTML = `<div style="color:#c53030;font-size:13px">讀取失敗:${esc(err.message)}</div>`;
     }
   };
   window.closeModal = ()=> document.getElementById('modalBg').classList.remove('show');
+
+  /* ---------- 刪除被駁回的假單 ---------- */
+  window.doDeleteForm = async(id,name)=>{
+    if(!confirm(`確定刪除「${name}」這張被駁回的假單?\n\n刪除後可到開單頁重新產出、修正後再推。此動作無法復原。`)) return;
+    try{
+      await deleteFormById(id);
+      showMsg('ok','已刪除該張假單');
+      await loadAll();
+    }catch(err){ showMsg('err','刪除失敗:'+err.message); }
+  };
 
   /* ---------- 訊息 ---------- */
   function showMsg(type,text){

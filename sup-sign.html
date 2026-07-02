@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>柔美飯店假單 · 主管簽核</title>
+<style>
+  :root{
+    --ink:#1a2b3c; --ink-soft:#54657a; --line:#d8e0e8; --line-soft:#eef2f6;
+    --bg:#f4f6f9; --paper:#ffffff;
+    --brand:#2b6cb0; --brand-dark:#1f4f82;
+    --accent:#c89b3c; --danger:#c53030; --ok:#2f9e6d;
+    --shadow:0 4px 20px rgba(26,43,60,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+  html,body{
+    min-height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    -webkit-font-smoothing:antialiased;overscroll-behavior:none;
+    touch-action:manipulation;-webkit-text-size-adjust:100%;
+  }
+  body{padding-bottom:16px}
+
+  .head{
+    background:linear-gradient(135deg,#4b3b78,#6a4fa0);
+    color:#fff;padding:22px 22px 18px;text-align:center;
+  }
+  .head h1{font-size:19px;font-weight:800;letter-spacing:.5px;
+    display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
+  .head .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 3px rgba(200,155,60,.3)}
+  .head p{font-size:12px;opacity:.85;margin-top:5px;letter-spacing:1px}
+  .head .subtitle{font-size:13.5px;font-weight:700;margin-top:6px;letter-spacing:1px}
+
+  .container{padding:14px 14px 0;max-width:640px;margin:0 auto}
+
+  .form-card{
+    background:#fff;border:2px solid #6a4fa0;border-radius:11px;
+    padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow);
+  }
+  .form-card.rejected{border-color:#e0b4b4;opacity:.6}
+  .form-card .fc-title{
+    text-align:center;font-size:16px;font-weight:800;letter-spacing:4px;
+    color:#4b3b78;padding-bottom:9px;margin-bottom:11px;
+    border-bottom:2px solid #6a4fa0;
+  }
+  .form-card .row{
+    display:flex;padding:6px 0;border-bottom:1px solid #eaf0f5;font-size:13.5px;line-height:1.7;
+  }
+  .form-card .row:last-child{border-bottom:none}
+  .form-card .row .lb{width:68px;flex-shrink:0;font-weight:700;color:var(--ink-soft);letter-spacing:2px}
+  .form-card .row .val{flex:1;color:var(--ink);font-weight:600;word-break:break-all}
+  .form-card .row .val.big{font-size:15px;font-weight:800;letter-spacing:1px}
+  .form-card .seg{padding:4px 0;font-size:13px;border-bottom:1px dashed #eaf0f5}
+  .form-card .seg:last-child{border-bottom:none}
+
+  .form-no{
+    display:inline-block;background:#6a4fa0;color:#fff;
+    padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;
+    letter-spacing:1px;margin-right:8px;vertical-align:middle;
+  }
+
+  /* 員工簽名預覽 */
+  .emp-sign{
+    margin-top:10px;padding-top:10px;border-top:1px dashed #d8e0e8;
+  }
+  .emp-sign .lb{font-size:12px;color:var(--ink-soft);font-weight:700;letter-spacing:1px;margin-bottom:6px}
+  .emp-sign img{
+    display:block;width:100%;max-width:260px;margin:0 auto;
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+  }
+  .emp-sign .nosig{font-size:12.5px;color:var(--danger);text-align:center;padding:8px}
+
+  .card-actions{margin-top:12px;display:flex;gap:8px}
+  .btn-reject{
+    flex:1;padding:10px;background:#fff;border:2px solid #e0a0a0;color:var(--danger);
+    border-radius:9px;font-size:13.5px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:1px;
+  }
+  .btn-reject:active{background:#fdecea}
+  .rejected-tag{
+    text-align:center;padding:9px;background:#fdecea;color:var(--danger);
+    border-radius:9px;font-size:13px;font-weight:700;margin-top:10px;
+  }
+
+  .btn-bar{padding:12px 14px 8px}
+  .btn-primary{
+    width:100%;padding:15px;background:#6a4fa0;color:#fff;
+    border:none;border-radius:10px;font-size:15.5px;font-weight:800;
+    cursor:pointer;font-family:inherit;letter-spacing:2px;
+    box-shadow:0 2px 8px rgba(75,59,120,.35);transition:.15s;
+  }
+  .btn-primary:disabled{background:#c9c0dd;cursor:not-allowed;box-shadow:none}
+  .btn-primary:active:not(:disabled){transform:scale(.98)}
+
+  .msg{padding:13px 16px;border-radius:9px;font-size:13.5px;font-weight:600;margin:0 14px 12px;line-height:1.65}
+  .msg.err{background:#fdecea;color:var(--danger)}
+  .msg.ok{background:#e6f6ed;color:var(--ok)}
+  .msg.info{background:#eee9f6;color:#4b3b78}
+
+  .loading{text-align:center;padding:60px 20px;color:var(--ink-soft);font-size:14px}
+  .loading .spin{display:inline-block;width:30px;height:30px;border:3px solid #eee9f6;
+    border-top-color:#6a4fa0;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .done-card{background:#fff;border-radius:11px;padding:32px 22px;text-align:center;box-shadow:var(--shadow);margin:20px 16px}
+  .done-card .big{font-size:60px;color:var(--ok);margin-bottom:12px}
+  .done-card h2{font-size:19px;color:var(--ink);margin-bottom:8px;letter-spacing:1px}
+  .done-card p{font-size:13.5px;color:var(--ink-soft);line-height:1.7}
+  .done-card .time{display:inline-block;margin-top:12px;padding:6px 14px;background:#e6f6ed;color:var(--ok);border-radius:6px;font-size:12.5px;font-weight:700}
+
+  /* ===== 全螢幕橫放簽名頁 ===== */
+  .sign-fullscreen{
+    position:fixed;inset:0;background:#fff;z-index:9999;display:none;flex-direction:column;
+    touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none;
+  }
+  .sign-fullscreen.on{display:flex}
+  .sf-top{background:#4b3b78;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;flex-shrink:0}
+  .sf-back{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit}
+  .sf-info{font-size:12.5px;letter-spacing:1px}
+  .sf-canvas-wrap{flex:1;position:relative;background:#fbfcfd;padding:14px;overflow:hidden;touch-action:none}
+  .sf-canvas-inner{width:100%;height:100%;border:2px dashed #b4a4d3;border-radius:10px;background:#fff;position:relative;overflow:hidden;touch-action:none}
+  .sf-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#c0b8d6;font-size:15px;pointer-events:none;letter-spacing:1px;font-weight:600;text-align:center}
+  .sf-hint.hidden{display:none}
+  canvas.pad-full{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .sf-bottom{display:flex;gap:10px;padding:10px 14px 14px;background:#fff;border-top:1px solid var(--line);flex-shrink:0}
+  .sf-bottom button{flex:1;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:800;font-family:inherit;letter-spacing:1px;cursor:pointer;transition:.15s}
+  .sf-clear{background:#fff;border:2px solid #d8a55a !important;color:#8a5a10}
+  .sf-clear:active{background:#fbe6c3}
+  .sf-confirm{background:var(--ok);color:#fff}
+  .sf-confirm:active{background:#268a5f}
+  .sf-confirm:disabled{background:#c0d0e0;cursor:not-allowed}
+
+  .rotate-mask{position:absolute;inset:0;background:#fff;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--ink-soft)}
+  .rotate-mask.hidden{display:none}
+  .rotate-mask .icon{font-size:70px;margin-bottom:16px;animation:rotateHint 2s ease-in-out infinite}
+  .rotate-mask h3{font-size:17px;color:var(--ink);margin-bottom:8px;letter-spacing:2px}
+  .rotate-mask p{font-size:13.5px;line-height:1.7}
+  @keyframes rotateHint{0%,40%,100%{transform:rotate(0deg)}60%,90%{transform:rotate(-90deg)}}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1><span class="dot"></span>柔美飯店假單 · 主管簽核</h1>
+  <p>Beauty Hotels · Approval</p>
+  <div class="subtitle" id="headSubtitle">載入中...</div>
+</div>
+
+<div id="msgBox"></div>
+
+<div id="root">
+  <div class="loading"><div class="spin"></div><div>載入待簽核假單中...</div></div>
+</div>
+
+<!-- 橫放簽名頁 -->
+<div class="sign-fullscreen" id="signFull">
+  <div class="sf-top">
+    <button class="sf-back" onclick="closeSignFull()">← 返回檢視</button>
+    <div class="sf-info" id="sfInfo">主管簽核</div>
+  </div>
+  <div class="sf-canvas-wrap">
+    <div class="sf-canvas-inner">
+      <div class="sf-hint" id="sfHint">請在框內簽名</div>
+      <canvas class="pad-full" id="padFull"></canvas>
+    </div>
+    <div class="rotate-mask" id="rotateMask">
+      <div class="icon">📱</div>
+      <h3>請將手機橫放</h3>
+      <p>簽名區域會變得更大更方便,<br>簽名比例也才會正確蓋到假單。</p>
+    </div>
+  </div>
+  <div class="sf-bottom">
+    <button class="sf-clear" onclick="clearPadFull()">重簽</button>
+    <button class="sf-confirm" id="btnConfirmSign" disabled onclick="submitApprove()">確認送出</button>
+  </div>
+</div>
+
+<script>
+// 防縮放
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+document.addEventListener('gestureend', e => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
+const params = new URLSearchParams(location.search);
+const supId = params.get('sup');
+let formsList = [];
+let supName = '';
+
+window.onload = async () => {
+  if (!supId) { showErr('缺少必要參數,請從 LINE 訊息中的連結進入本頁。'); return; }
+  await loadForms();
+};
+
+async function loadForms() {
+  try {
+    const res = await fetch('/api/sup-sign?sup=' + encodeURIComponent(supId));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '載入失敗');
+    formsList = data.forms || [];
+    supName = data.supervisorName || '主管';
+    if (formsList.length === 0) return renderNoPending();
+    document.getElementById('headSubtitle').textContent = `${supName} · 待簽核 ${formsList.length} 張`;
+    renderList();
+  } catch (err) {
+    showErr('載入失敗:' + err.message);
+  }
+}
+
+function renderNoPending() {
+  document.getElementById('headSubtitle').textContent = '';
+  document.getElementById('root').innerHTML = `
+    <div class="done-card">
+      <div class="big">✅</div>
+      <h2>目前沒有待簽核假單</h2>
+      <p>所有假單皆已處理完畢<br>有新的待簽核時系統會再通知您</p>
+    </div>`;
+}
+
+function activeForms() { return formsList.filter(f => !f._rejected); }
+
+function renderList() {
+  const Y = formsList[0].rocYear || 115;
+  const cards = formsList.map((f, i) => renderFormCard(f, i + 1, Y)).join('');
+  const n = activeForms().length;
+  document.getElementById('root').innerHTML = `
+    <div class="msg info">
+      👔 <b>共 ${formsList.length} 張待簽核</b>。請核對每張內容與員工簽名。<br>
+      <small style="font-weight:400">內容有誤可逐張「駁回」退回管理者;其餘按下方一次簽名全部通過。</small>
+    </div>
+    <div class="container">${cards}</div>
+    <div class="btn-bar">
+      <button class="btn-primary" id="approveBtn" onclick="openSignFull()" ${n===0?'disabled':''}>
+        ✍️ 簽核通過並簽名 (${n} 張)
+      </button>
+    </div>`;
+}
+
+function renderFormCard(f, num, Y) {
+  const dept = f.dept || '';
+  let dateHtml = '';
+  if (f.type === 'multiLeave' && f.segments) {
+    dateHtml = `
+      <div class="row"><div class="lb">日期</div><div class="val">
+        ${f.segments.map(s => {
+          const isRange = !(s.startMon===s.endMon && s.startDay===s.endDay);
+          const sh = s.shift ? ` (${s.shift.start}–${s.shift.end})` : '';
+          const range = isRange ? `${Y}/${s.startMon}/${s.startDay} – ${s.endMon}/${s.endDay}` : `${Y}/${s.startMon}/${s.startDay}`;
+          return `<div class="seg">📅 ${range}${sh}</div>`;
+        }).join('')}
+      </div></div>`;
+  } else {
+    const endMon = f.endMon || f.mon, endDay = f.endDay || f.day;
+    const isRange = (f.mon !== endMon) || (f.day !== endDay);
+    const dateStr = isRange ? `${Y}/${f.mon}/${f.day} – ${endMon}/${endDay}` : `${Y}/${f.mon}/${f.day}`;
+    const timeStr = f.shift ? `${f.shift.start} – ${f.shift.end}` : '—';
+    dateHtml = `
+      <div class="row"><div class="lb">日期</div><div class="val big">${dateStr}</div></div>
+      <div class="row"><div class="lb">時間</div><div class="val">${timeStr}</div></div>`;
+  }
+  const reasonText = f.type === 'ot' ? (f.comp === '加班費' ? '加班費' : '補休') : (f.reason || '');
+
+  const empSign = f.employeeSignatureData
+    ? `<img src="${f.employeeSignatureData}" alt="員工簽名">`
+    : `<div class="nosig">⚠️ 找不到員工簽名資料</div>`;
+
+  const actions = f._rejected
+    ? `<div class="rejected-tag">⛔ 已駁回,將退回管理者</div>`
+    : `<div class="card-actions"><button class="btn-reject" onclick="rejectForm('${f.id}')">⛔ 駁回這張</button></div>`;
+
+  return `
+    <div class="form-card ${f._rejected?'rejected':''}">
+      <div class="fc-title"><span class="form-no">第 ${num} 張</span>${f.kind}</div>
+      <div class="row"><div class="lb">姓名</div><div class="val big">${f.fullName || f.empKey}</div></div>
+      <div class="row"><div class="lb">職稱</div><div class="val">${dept}</div></div>
+      ${dateHtml}
+      ${reasonText ? `<div class="row"><div class="lb">${f.type==='ot'?'加班類型':'事由'}</div><div class="val">${reasonText}</div></div>` : ''}
+      <div class="emp-sign"><div class="lb">員工簽名</div>${empSign}</div>
+      ${actions}
+    </div>`;
+}
+
+async function rejectForm(formId) {
+  const f = formsList.find(x => x.id === formId);
+  if (!f) return;
+  const reason = prompt(`駁回「${f.fullName} · ${f.kind}」\n\n請填寫駁回原因(例:日期錯、時數不對):`);
+  if (reason === null) return;                 // 取消
+  const r = reason.trim();
+  if (!r) { alert('請填寫駁回原因'); return; }
+
+  try {
+    const res = await fetch('/api/sup-sign?action=reject', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sup: supId, formId, reason: r }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '駁回失敗');
+    f._rejected = true;
+    renderList();
+    showMsg('ok', `已駁回:${f.fullName} · ${f.kind}(退回管理者)`);
+  } catch (err) {
+    showMsg('err', err.message);
+  }
+}
+
+/* ===== 橫放簽名頁(與員工端相同機制)===== */
+let canvasFull, ctxFull, drawingFull = false, hasDrawn = false;
+let orientationHandler = null, resizeHandler = null;
+let sizeObserver = null, sizeObserverTimer = null, drawAreaBound = false;
+
+function preventPageScroll(e){ e.preventDefault(); }
+
+function bindDrawArea(){
+  if (drawAreaBound) return;
+  const wrap = document.querySelector('.sf-canvas-wrap');
+  if (!wrap) return;
+  wrap.addEventListener('touchstart', startDrawFull, { passive: false });
+  wrap.addEventListener('touchmove',  doDrawFull,   { passive: false });
+  wrap.addEventListener('touchend',   endDrawFull,  { passive: false });
+  wrap.addEventListener('touchcancel',endDrawFull,  { passive: false });
+  wrap.addEventListener('mousedown',  startDrawFull);
+  wrap.addEventListener('mousemove',  doDrawFull);
+  wrap.addEventListener('mouseup',    endDrawFull);
+  wrap.addEventListener('mouseleave', endDrawFull);
+  drawAreaBound = true;
+}
+
+function openSignFull() {
+  if (activeForms().length === 0) { alert('沒有可簽核的假單'); return; }
+  const el = document.getElementById('signFull');
+  el.classList.add('on');
+  document.getElementById('sfInfo').textContent = `${supName} · 簽核 ${activeForms().length} 張`;
+  document.body.style.overflow = 'hidden';
+  document.addEventListener('touchmove', preventPageScroll, { passive: false });
+  bindDrawArea();
+
+  orientationHandler = () => { checkOrientation(); setTimeout(reInitPad, 250); };
+  resizeHandler = () => { checkOrientation(); setTimeout(reInitPad, 100); };
+  window.addEventListener('orientationchange', orientationHandler);
+  window.addEventListener('resize', resizeHandler);
+  if (window.ResizeObserver) {
+    const wrap = document.querySelector('.sf-canvas-wrap');
+    sizeObserver = new ResizeObserver(() => { clearTimeout(sizeObserverTimer); sizeObserverTimer = setTimeout(reInitPad, 120); });
+    if (wrap) sizeObserver.observe(wrap);
+  }
+  checkOrientation();
+  setTimeout(initPadFull, 50);
+}
+
+function closeSignFull() {
+  document.getElementById('signFull').classList.remove('on');
+  document.body.style.overflow = '';
+  document.removeEventListener('touchmove', preventPageScroll, { passive: false });
+  if (orientationHandler) window.removeEventListener('orientationchange', orientationHandler);
+  if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+  if (sizeObserver) { sizeObserver.disconnect(); sizeObserver = null; }
+  clearTimeout(sizeObserverTimer);
+  orientationHandler = null; resizeHandler = null;
+}
+
+function isPortrait(){ return window.innerHeight > window.innerWidth; }
+function checkOrientation(){
+  const mask = document.getElementById('rotateMask');
+  if (isPortrait() && window.innerWidth < 500) mask.classList.remove('hidden');
+  else mask.classList.add('hidden');
+}
+
+function reInitPad(){
+  if (!canvasFull || !ctxFull) return initPadFull();
+  const oldData = hasDrawn ? canvasFull.toDataURL() : null;
+  initPadFull();
+  if (oldData) {
+    const img = new Image();
+    img.onload = () => { const rect = canvasFull.getBoundingClientRect(); ctxFull.drawImage(img, 0, 0, rect.width, rect.height); };
+    img.src = oldData;
+  }
+}
+
+function initPadFull(){
+  canvasFull = document.getElementById('padFull');
+  if (!canvasFull) return;
+  const rect = canvasFull.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvasFull.width = Math.round(rect.width * dpr);
+  canvasFull.height = Math.round(rect.height * dpr);
+  ctxFull = canvasFull.getContext('2d');
+  ctxFull.setTransform(1,0,0,1,0,0);
+  ctxFull.scale(dpr, dpr);
+  ctxFull.lineCap = 'round'; ctxFull.lineJoin = 'round';
+  ctxFull.strokeStyle = '#1a2b3c'; ctxFull.lineWidth = 3.5;
+}
+
+function getPosFull(evt){
+  const rect = canvasFull.getBoundingClientRect();
+  const e = (evt.touches && evt.touches[0]) || (evt.changedTouches && evt.changedTouches[0]) || evt;
+  let x = e.clientX - rect.left, y = e.clientY - rect.top;
+  x = Math.max(0, Math.min(rect.width, x));
+  y = Math.max(0, Math.min(rect.height, y));
+  return { x, y };
+}
+
+function startDrawFull(e){
+  const mask = document.getElementById('rotateMask');
+  if (mask && !mask.classList.contains('hidden')) return;
+  if (!canvasFull || !ctxFull) return;
+  e.preventDefault();
+  drawingFull = true; hasDrawn = true;
+  document.getElementById('sfHint').classList.add('hidden');
+  document.getElementById('btnConfirmSign').disabled = false;
+  const p = getPosFull(e);
+  ctxFull.beginPath(); ctxFull.moveTo(p.x, p.y);
+}
+function doDrawFull(e){
+  if (!drawingFull) return;
+  e.preventDefault();
+  const p = getPosFull(e);
+  ctxFull.lineTo(p.x, p.y); ctxFull.stroke();
+}
+function endDrawFull(e){ if (drawingFull && e) e.preventDefault(); drawingFull = false; }
+
+function clearPadFull(){
+  if (!ctxFull || !canvasFull) return;
+  ctxFull.clearRect(0, 0, canvasFull.width, canvasFull.height);
+  hasDrawn = false;
+  document.getElementById('sfHint').classList.remove('hidden');
+  document.getElementById('btnConfirmSign').disabled = true;
+}
+
+async function submitApprove(){
+  if (!hasDrawn) { alert('請先簽名'); return; }
+  const ids = activeForms().map(f => f.id);
+  if (ids.length === 0) { alert('沒有可簽核的假單'); return; }
+  if (!confirm(`確定簽核通過?將蓋到 ${ids.length} 張假單。送出後無法修改。`)) return;
+
+  const btn = document.getElementById('btnConfirmSign');
+  btn.disabled = true; btn.textContent = '送出中...';
+  try {
+    const dataUrl = trimAndCompressSignature(canvasFull);
+    const res = await fetch('/api/sup-sign?action=approve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sup: supId, formIds: ids, signature: dataUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '送出失敗');
+    closeSignFull();
+    renderDone(data.completedCount || ids.length);
+  } catch (err) {
+    alert('送出失敗:' + err.message);
+    btn.disabled = false; btn.textContent = '確認送出';
+  }
+}
+
+function trimAndCompressSignature(srcCanvas){
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const ctx = srcCanvas.getContext('2d');
+  const px = ctx.getImageData(0, 0, w, h).data;
+  let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (px[(y*w+x)*4+3] > 0) { found = true; if (x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+  }
+  if (!found) {
+    const c = document.createElement('canvas'); c.width=500; c.height=200;
+    const cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,500,200); return c.toDataURL('image/png');
+  }
+  const pad = Math.round(Math.min(w,h)*0.03);
+  minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad); maxX=Math.min(w-1,maxX+pad); maxY=Math.min(h-1,maxY+pad);
+  const trimW=maxX-minX+1, trimH=maxY-minY+1, outW=500, outH=200;
+  const c=document.createElement('canvas'); c.width=outW; c.height=outH;
+  const cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,outW,outH);
+  const ratio=Math.min(outW/trimW, outH/trimH);
+  const drawW=trimW*ratio, drawH=trimH*ratio;
+  cx.drawImage(srcCanvas, minX, minY, trimW, trimH, (outW-drawW)/2, (outH-drawH)/2, drawW, drawH);
+  return c.toDataURL('image/png');
+}
+
+function renderDone(count){
+  document.getElementById('headSubtitle').textContent = '';
+  document.getElementById('root').innerHTML = `
+    <div class="done-card">
+      <div class="big">✅</div>
+      <h2>簽核完成</h2>
+      <p>已完成 <b>${count} 張</b>假單簽核<br>假單已定稿完成</p>
+      <div class="time">簽核時間: ${new Date().toLocaleString('zh-TW',{hour12:false})}</div>
+    </div>`;
+}
+
+function showMsg(type, text){
+  document.getElementById('msgBox').innerHTML = `<div class="msg ${type}">${text}</div>`;
+  window.scrollTo(0, 0);
+}
+function showErr(text){
+  document.getElementById('headSubtitle').textContent = '';
+  document.getElementById('root').innerHTML = `<div class="msg err">${text}</div>`;
+}
+</script>
+</body>
+</html>
