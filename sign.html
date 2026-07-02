@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>柔美飯店假單 · 簽名</title>
 <style>
   :root{
@@ -12,15 +12,18 @@
     --accent:#c89b3c; --danger:#c53030; --ok:#2f9e6d;
     --shadow:0 4px 20px rgba(26,43,60,.08);
   }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
   html,body{
     min-height:100%;background:var(--bg);color:var(--ink);
     font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
-    -webkit-font-smoothing:antialiased;overscroll-behavior:none;
+    -webkit-font-smoothing:antialiased;
+    overscroll-behavior:none;
+    touch-action:manipulation;
+    -webkit-text-size-adjust:100%;
   }
   body{padding-bottom:16px}
 
-  /* ===== 頁首 ===== */
+  /* 頁首 */
   .head{
     background:linear-gradient(135deg,var(--brand-dark),var(--brand));
     color:#fff;padding:22px 22px 18px;text-align:center;
@@ -34,7 +37,6 @@
 
   .container{padding:14px 14px 0;max-width:640px;margin:0 auto}
 
-  /* ===== 假單卡 ===== */
   .form-card{
     background:#fff;border:2px solid var(--brand-dark);border-radius:11px;
     padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow);
@@ -56,14 +58,12 @@
   .form-card .seg{padding:4px 0;font-size:13px;border-bottom:1px dashed #eaf0f5}
   .form-card .seg:last-child{border-bottom:none}
 
-  /* 假單編號小標 */
   .form-no{
     display:inline-block;background:var(--brand);color:#fff;
     padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;
     letter-spacing:1px;margin-right:8px;vertical-align:middle;
   }
 
-  /* ===== 底部按鈕 ===== */
   .btn-bar{padding:12px 14px 8px}
   .btn-primary{
     width:100%;padding:15px;background:var(--brand);color:#fff;
@@ -73,10 +73,7 @@
   }
   .btn-primary:disabled{background:#c0d0e0;cursor:not-allowed;box-shadow:none}
   .btn-primary:active:not(:disabled){transform:scale(.98)}
-  .btn-ok{background:var(--ok)}
-  .btn-ok:hover{background:#268a5f}
 
-  /* ===== 通知/訊息 ===== */
   .msg{
     padding:13px 16px;border-radius:9px;font-size:13.5px;font-weight:600;
     margin:0 14px 12px;line-height:1.65;
@@ -94,7 +91,6 @@
   }
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  /* ===== 完成頁 ===== */
   .done-card{
     background:#fff;border-radius:11px;padding:32px 22px;text-align:center;
     box-shadow:var(--shadow);margin:20px 16px;
@@ -107,10 +103,14 @@
     background:#e6f6ed;color:var(--ok);border-radius:6px;font-size:12.5px;font-weight:700;
   }
 
-  /* ===== 橫放簽名頁(Fullscreen 覆蓋) ===== */
+  /* ===== 全螢幕橫放簽名頁 ===== */
   .sign-fullscreen{
     position:fixed;inset:0;background:#fff;z-index:9999;
     display:none;flex-direction:column;
+    /* 鎖死縮放 */
+    touch-action:none;
+    overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
   }
   .sign-fullscreen.on{display:flex}
   .sf-top{
@@ -126,15 +126,18 @@
   .sf-canvas-wrap{
     flex:1;position:relative;background:#fbfcfd;
     padding:14px;overflow:hidden;
+    touch-action:none;
   }
   .sf-canvas-inner{
     width:100%;height:100%;
     border:2px dashed #b4c4d3;border-radius:10px;background:#fff;
-    position:relative;
+    position:relative;overflow:hidden;
+    touch-action:none;
   }
   .sf-hint{
     position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
     color:#c0cbd6;font-size:15px;pointer-events:none;letter-spacing:1px;font-weight:600;
+    text-align:center;
   }
   .sf-hint.hidden{display:none}
   canvas.pad-full{
@@ -151,23 +154,27 @@
     cursor:pointer;transition:.15s;
   }
   .sf-clear{background:#fff;border:2px solid #d8a55a !important;color:#8a5a10}
-  .sf-clear:hover{background:#fbe6c3}
+  .sf-clear:active{background:#fbe6c3}
   .sf-confirm{background:var(--ok);color:#fff}
-  .sf-confirm:hover{background:#268a5f}
+  .sf-confirm:active{background:#268a5f}
   .sf-confirm:disabled{background:#c0d0e0;cursor:not-allowed}
 
-  /* 提示旋轉手機 */
-  .rotate-hint{
-    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-    text-align:center;color:var(--ink-soft);font-size:14px;
-    padding:20px 30px;background:rgba(255,255,255,.95);border-radius:10px;
-    box-shadow:var(--shadow);display:none;
+  /* 直放時強制要求橫放的遮罩 */
+  .rotate-mask{
+    position:absolute;inset:0;background:#fff;z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:30px;color:var(--ink-soft);
   }
-  .rotate-hint.on{display:block}
-  .rotate-hint .icon{font-size:40px;margin-bottom:8px;animation:rotate 2s ease-in-out infinite}
-  @keyframes rotate{
-    0%,100%{transform:rotate(0deg)}
-    50%{transform:rotate(90deg)}
+  .rotate-mask.hidden{display:none}
+  .rotate-mask .icon{
+    font-size:70px;margin-bottom:16px;
+    animation:rotateHint 2s ease-in-out infinite;
+  }
+  .rotate-mask h3{font-size:17px;color:var(--ink);margin-bottom:8px;letter-spacing:2px}
+  .rotate-mask p{font-size:13.5px;line-height:1.7}
+  @keyframes rotateHint{
+    0%,40%,100%{transform:rotate(0deg)}
+    60%,90%{transform:rotate(-90deg)}
   }
 </style>
 </head>
@@ -186,7 +193,7 @@
   </div>
 </div>
 
-<!-- 橫放簽名頁(fullscreen 覆蓋) -->
+<!-- 橫放簽名頁 -->
 <div class="sign-fullscreen" id="signFull">
   <div class="sf-top">
     <button class="sf-back" onclick="closeSignFull()">← 返回檢視</button>
@@ -197,9 +204,11 @@
       <div class="sf-hint" id="sfHint">請在框內簽名</div>
       <canvas class="pad-full" id="padFull"></canvas>
     </div>
-    <div class="rotate-hint" id="rotateHint">
+    <!-- 直放時的旋轉提示遮罩(全覆蓋) -->
+    <div class="rotate-mask" id="rotateMask">
       <div class="icon">📱</div>
-      <div><b>請將手機橫放</b><br>簽名區域會變得更大</div>
+      <h3>請將手機橫放</h3>
+      <p>簽名區域會變得更大更方便,<br>簽名比例也才會正確蓋到假單。</p>
     </div>
   </div>
   <div class="sf-bottom">
@@ -209,10 +218,23 @@
 </div>
 
 <script>
+// 防止縮放(iOS 手勢)
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+document.addEventListener('gestureend', e => e.preventDefault());
+
+// 防止雙擊縮放
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
 const params = new URLSearchParams(location.search);
 const empKey = params.get('emp');
-const singleId = params.get('id');   // 相容舊版
-let formsList = [];   // 所有待簽假單
+const singleId = params.get('id');
+let formsList = [];
 let empFull = '', empKeyStore = '';
 
 const KIND_LABEL = {
@@ -234,7 +256,6 @@ window.onload = async () => {
 async function loadForms() {
   try {
     if (empKey) {
-      // 新版:整批員工假單
       const res = await fetch('/api/sign?emp=' + encodeURIComponent(empKey));
       if (!res.ok) {
         const err = await res.json().catch(()=>({}));
@@ -243,15 +264,12 @@ async function loadForms() {
       const data = await res.json();
       formsList = data.forms || [];
       empKeyStore = data.empKey;
-      if (formsList.length === 0) {
-        return renderNoPending();
-      }
+      if (formsList.length === 0) return renderNoPending();
       empFull = formsList[0].fullName || empKey;
       document.getElementById('headSubtitle').textContent =
         `${empFull} · 共 ${formsList.length} 張假單`;
       renderList();
     } else if (singleId) {
-      // 舊版相容:單張
       const res = await fetch('/api/sign?id=' + encodeURIComponent(singleId));
       if (!res.ok) {
         const err = await res.json().catch(()=>({}));
@@ -302,7 +320,6 @@ function renderFormCard(f, num, Y) {
   const kind = KIND_LABEL[f.type] || '假單';
   const dept = f.dept || '';
 
-  // 日期
   let dateHtml = '';
   if (f.type === 'multiLeave' && f.segments) {
     dateHtml = `
@@ -368,32 +385,72 @@ function renderFormCard(f, num, Y) {
 
 /* ===== 橫放簽名頁 ===== */
 let canvasFull, ctxFull, drawingFull = false, hasDrawn = false;
+let orientationHandler = null;
+let resizeHandler = null;
 
 function openSignFull() {
   const el = document.getElementById('signFull');
   el.classList.add('on');
   document.getElementById('sfInfo').textContent =
     `${empFull} · 共 ${formsList.length} 張`;
+  document.body.style.overflow = 'hidden';
 
-  // 若手機是直的,顯示旋轉提示
+  // 監聽旋轉
+  orientationHandler = () => {
+    checkOrientation();
+    setTimeout(reInitPad, 250);   // 旋轉完 canvas 大小會變,要重畫
+  };
+  resizeHandler = () => {
+    checkOrientation();
+    setTimeout(reInitPad, 100);
+  };
+  window.addEventListener('orientationchange', orientationHandler);
+  window.addEventListener('resize', resizeHandler);
+
   checkOrientation();
-  window.addEventListener('resize', checkOrientation);
-
-  // 初始化 canvas(等 DOM 更新完再抓大小)
   setTimeout(initPadFull, 50);
 }
 
 function closeSignFull() {
   const el = document.getElementById('signFull');
   el.classList.remove('on');
-  window.removeEventListener('resize', checkOrientation);
+  document.body.style.overflow = '';
+  if (orientationHandler) window.removeEventListener('orientationchange', orientationHandler);
+  if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+  orientationHandler = null;
+  resizeHandler = null;
+}
+
+function isPortrait() {
+  return window.innerHeight > window.innerWidth;
 }
 
 function checkOrientation() {
-  const isPortraitPhone = window.innerHeight > window.innerWidth && window.innerWidth < 500;
-  const hint = document.getElementById('rotateHint');
-  if (isPortraitPhone) hint.classList.add('on');
-  else hint.classList.remove('on');
+  const mask = document.getElementById('rotateMask');
+  // 直放且螢幕不夠寬(排除電腦模擬)→ 顯示遮罩
+  if (isPortrait() && window.innerWidth < 500) {
+    mask.classList.remove('hidden');
+  } else {
+    mask.classList.add('hidden');
+  }
+}
+
+// 重新初始化(旋轉後尺寸變)- 保留已畫的內容
+function reInitPad() {
+  if (!canvasFull || !ctxFull) return initPadFull();
+  // 存畫布內容
+  const oldData = hasDrawn ? canvasFull.toDataURL() : null;
+  initPadFull();
+  // 還原
+  if (oldData) {
+    const img = new Image();
+    img.onload = () => {
+      // 依比例貼回
+      const rect = canvasFull.getBoundingClientRect();
+      ctxFull.drawImage(img, 0, 0, rect.width, rect.height);
+    };
+    img.src = oldData;
+  }
 }
 
 function initPadFull() {
@@ -401,24 +458,46 @@ function initPadFull() {
   if (!canvasFull) return;
   const rect = canvasFull.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
-  canvasFull.width = rect.width * dpr;
-  canvasFull.height = rect.height * dpr;
+  // 設定 canvas 像素大小(HD)
+  canvasFull.width = Math.round(rect.width * dpr);
+  canvasFull.height = Math.round(rect.height * dpr);
   ctxFull = canvasFull.getContext('2d');
   ctxFull.scale(dpr, dpr);
   ctxFull.lineCap = 'round';
   ctxFull.lineJoin = 'round';
   ctxFull.strokeStyle = '#1a2b3c';
-  ctxFull.lineWidth = 3.5;   // 大螢幕線條粗一點
+  ctxFull.lineWidth = 3.5;
 
-  ['mousedown','touchstart'].forEach(e => canvasFull.addEventListener(e, startDrawFull));
-  ['mousemove','touchmove'].forEach(e => canvasFull.addEventListener(e, doDrawFull));
-  ['mouseup','mouseleave','touchend','touchcancel'].forEach(e => canvasFull.addEventListener(e, endDrawFull));
+  // 先移除舊的事件監聽,避免重複綁定
+  const newCanvas = canvasFull.cloneNode(false);
+  canvasFull.parentNode.replaceChild(newCanvas, canvasFull);
+  canvasFull = newCanvas;
+  ctxFull = canvasFull.getContext('2d');
+  ctxFull.scale(dpr, dpr);
+  ctxFull.lineCap = 'round';
+  ctxFull.lineJoin = 'round';
+  ctxFull.strokeStyle = '#1a2b3c';
+  ctxFull.lineWidth = 3.5;
+
+  // Touch/Mouse 事件(用 passive:false 確保能 preventDefault)
+  canvasFull.addEventListener('touchstart', startDrawFull, { passive: false });
+  canvasFull.addEventListener('touchmove', doDrawFull, { passive: false });
+  canvasFull.addEventListener('touchend', endDrawFull, { passive: false });
+  canvasFull.addEventListener('touchcancel', endDrawFull, { passive: false });
+  canvasFull.addEventListener('mousedown', startDrawFull);
+  canvasFull.addEventListener('mousemove', doDrawFull);
+  canvasFull.addEventListener('mouseup', endDrawFull);
+  canvasFull.addEventListener('mouseleave', endDrawFull);
 }
 
+// 座標計算(關鍵:考慮 canvas 顯示尺寸和實際 rect)
 function getPosFull(evt) {
   const rect = canvasFull.getBoundingClientRect();
-  const e = evt.touches ? evt.touches[0] : evt;
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const e = (evt.touches && evt.touches[0]) || (evt.changedTouches && evt.changedTouches[0]) || evt;
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+  };
 }
 
 function startDrawFull(e) {
@@ -441,12 +520,12 @@ function doDrawFull(e) {
 }
 
 function endDrawFull(e) {
-  if (drawingFull) e.preventDefault?.();
+  if (drawingFull && e) e.preventDefault();
   drawingFull = false;
 }
 
 function clearPadFull() {
-  if (!ctxFull) return;
+  if (!ctxFull || !canvasFull) return;
   ctxFull.clearRect(0, 0, canvasFull.width, canvasFull.height);
   hasDrawn = false;
   document.getElementById('sfHint').classList.remove('hidden');
@@ -462,13 +541,11 @@ async function submitBatchSign() {
   btn.textContent = '送出中...';
 
   try {
-    const dataUrl = compressSignature(canvasFull);
+    // 裁掉空白邊 + 壓縮 + 統一寬高比(假單簽名欄是寬型)
+    const dataUrl = trimAndCompressSignature(canvasFull);
     const formIds = formsList.map(f => f.id);
 
-    const url = singleId
-      ? '/api/sign?action=submit'
-      : '/api/sign?action=submitBatch';
-
+    const url = singleId ? '/api/sign?action=submit' : '/api/sign?action=submitBatch';
     const payload = singleId
       ? { id: singleId, signature: dataUrl }
       : { formIds, signature: dataUrl };
@@ -490,18 +567,67 @@ async function submitBatchSign() {
   }
 }
 
-function compressSignature(srcCanvas) {
-  const targetW = 500;
-  const ratio = targetW / srcCanvas.width;
-  const targetH = Math.round(srcCanvas.height * ratio);
-  const c2 = document.createElement('canvas');
-  c2.width = targetW;
-  c2.height = targetH;
-  const c2ctx = c2.getContext('2d');
-  c2ctx.fillStyle = '#fff';
-  c2ctx.fillRect(0, 0, targetW, targetH);
-  c2ctx.drawImage(srcCanvas, 0, 0, targetW, targetH);
-  return c2.toDataURL('image/png');
+// 裁掉空白邊、統一輸出成扁寬型 500x200(適合貼到假單簽名欄)
+function trimAndCompressSignature(srcCanvas) {
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+  const ctx = srcCanvas.getContext('2d');
+  const img = ctx.getImageData(0, 0, w, h);
+  const px = img.data;
+
+  // 找有筆跡的最小/最大 x, y
+  let minX = w, minY = h, maxX = 0, maxY = 0;
+  let found = false;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const alpha = px[(y * w + x) * 4 + 3];
+      if (alpha > 0) {
+        found = true;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (!found) {
+    // 沒筆跡(不應該發生),回原圖白底
+    const c = document.createElement('canvas');
+    c.width = 500; c.height = 200;
+    const cx = c.getContext('2d');
+    cx.fillStyle = '#fff';
+    cx.fillRect(0, 0, 500, 200);
+    return c.toDataURL('image/png');
+  }
+
+  // 加點邊界
+  const pad = Math.round(Math.min(w, h) * 0.03);
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(w - 1, maxX + pad);
+  maxY = Math.min(h - 1, maxY + pad);
+
+  const trimW = maxX - minX + 1;
+  const trimH = maxY - minY + 1;
+
+  // 統一輸出:白底、寬 500 x 高 200(比例 5:2 適合假單簽名欄)
+  const outW = 500, outH = 200;
+  const c = document.createElement('canvas');
+  c.width = outW;
+  c.height = outH;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#fff';
+  cx.fillRect(0, 0, outW, outH);
+
+  // 等比縮放後置中
+  const ratio = Math.min(outW / trimW, outH / trimH);
+  const drawW = trimW * ratio;
+  const drawH = trimH * ratio;
+  const dx = (outW - drawW) / 2;
+  const dy = (outH - drawH) / 2;
+  cx.drawImage(srcCanvas, minX, minY, trimW, trimH, dx, dy, drawW, drawH);
+  return c.toDataURL('image/png');
 }
 
 function renderDone(signedAt, count) {
