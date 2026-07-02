@@ -709,6 +709,7 @@ function makeMergedDraft(group){
 
 let BATCH_DRAFTS = [];   // 目前顯示中的草稿陣列
 let BATCH_SORT = 'date';  // 'date'=依日期(預設)、'emp'=依人名
+let HIDDEN_SIGNED_COUNT = 0;  // 掃描時因「已簽署」而被隱藏的草稿數(僅供標題提示)
 
 // 依目前選定的排序方式回傳排好的陣列(不改動原陣列)
 function sortedDrafts(){
@@ -748,7 +749,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 });
 
-function runBatchScan(){
+async function runBatchScan(){
   const range = document.getElementById('scanRange').value;
   const opts = {};
   // 用「表頭偵測到的主要月份」當預設 monthFilter，只掃當月
@@ -766,11 +767,75 @@ function runBatchScan(){
   }
 
   const drafts = scanSchedule(opts);
-  BATCH_DRAFTS = drafts;
+  // 過濾掉「已簽署 / 已完成」的假單對應的草稿,避免重複出現
+  const before = drafts.length;
+  const filtered = await filterOutSignedDrafts(drafts);
+  HIDDEN_SIGNED_COUNT = before - filtered.length;
+
+  BATCH_DRAFTS = filtered;
   renderDrafts();
   // 同步到雲端(其他裝置立刻看到)
   if(typeof syncBatchDraftsToCloud === 'function'){
     syncBatchDraftsToCloud();
+  }
+}
+
+// 將 multiLeave 的假別歸類到「請假(leave)」家族,其餘照原 type
+function normFormType(t){ return t === 'multiLeave' ? 'leave' : t; }
+
+// 列舉一段日期覆蓋的所有「empKey|normType|月|日」(同年內)
+function enumFormDayKeys(out, empKey, type, sMon, sDay, eMon, eDay){
+  const nt = normFormType(type);
+  let cur = new Date(2000, sMon-1, sDay);
+  const end = new Date(2000, (eMon||sMon)-1, (eDay||sDay));
+  let guard = 0;
+  while(cur <= end && guard < 400){
+    out.add(`${empKey}|${nt}|${cur.getMonth()+1}|${cur.getDate()}`);
+    cur.setDate(cur.getDate()+1);
+    guard++;
+  }
+}
+
+// 取得單張草稿覆蓋的所有 day key
+function draftCoveredDayKeys(d){
+  const set = new Set();
+  if(d.type === 'multiLeave' && Array.isArray(d.segments)){
+    d.segments.forEach(s => enumFormDayKeys(set, d.empKey, 'multiLeave', s.startMon, s.startDay, s.endMon, s.endDay));
+  }else{
+    enumFormDayKeys(set, d.empKey, d.type, d.mon, d.day, d.endMon, d.endDay);
+  }
+  return [...set];
+}
+
+// 掃描結果過濾:凡是「所有覆蓋日都已被已簽/已完成表單蓋掉」的草稿就隱藏
+async function filterOutSignedDrafts(drafts){
+  try{
+    const res = await fetch('/api/forms');
+    if(!res.ok) return drafts;
+    const data = await res.json();
+    const forms = data.forms || [];
+
+    // 收集已簽/已完成表單覆蓋的所有 day key
+    const signedDays = new Set();
+    for(const f of forms){
+      if(f.status !== 'employee_signed' && f.status !== 'completed') continue;
+      if(f.type === 'multiLeave' && Array.isArray(f.segments)){
+        f.segments.forEach(s => enumFormDayKeys(signedDays, f.empKey, 'multiLeave', s.startMon, s.startDay, s.endMon, s.endDay));
+      }else{
+        enumFormDayKeys(signedDays, f.empKey, f.type, f.mon, f.day, f.endMon, f.endDay);
+      }
+    }
+    if(signedDays.size === 0) return drafts;
+
+    // 某張草稿的所有覆蓋日都已簽 → 丟掉
+    return drafts.filter(d => {
+      const keys = draftCoveredDayKeys(d);
+      if(keys.length === 0) return true;
+      return !keys.every(k => signedDays.has(k));
+    });
+  }catch(err){
+    console.error('[filterOutSignedDrafts] 比對失敗,不過濾:', err);
+    return drafts;   // 出錯就照舊全顯示,不擋掉正常流程
   }
 }
 
@@ -779,7 +844,10 @@ function renderDrafts(){
   const head = document.getElementById('stageHead');
   head.style.display='flex';
   document.getElementById('stageTitle').innerHTML =
-    `批次草稿 <span>共 ${BATCH_DRAFTS.length} 張（可修改／刪除，確認後加入列印清單）</span>`;
+    `批次草稿 <span>共 ${BATCH_DRAFTS.length} 張（可修改／刪除，確認後加入列印清單）</span>` +
+    (HIDDEN_SIGNED_COUNT > 0
+      ? ` <span style="color:var(--ok);font-weight:700">· 已隱藏 ${HIDDEN_SIGNED_COUNT} 張已簽署</span>`
+      : '');
 
   if(BATCH_DRAFTS.length===0){
     body.innerHTML = `<div class="empty-stage"><div>
