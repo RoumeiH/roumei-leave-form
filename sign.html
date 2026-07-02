@@ -387,6 +387,29 @@ function renderFormCard(f, num, Y) {
 let canvasFull, ctxFull, drawingFull = false, hasDrawn = false;
 let orientationHandler = null;
 let resizeHandler = null;
+let sizeObserver = null;
+let sizeObserverTimer = null;
+let drawAreaBound = false;
+
+// 簽名頁開啟時,阻擋整頁捲動/下拉,避免寫字時畫面跳走
+// (按鈕是點擊 touchend,不受影響;canvas 仍可正常繪圖)
+function preventPageScroll(e){ e.preventDefault(); }
+
+// 把繪圖事件綁在「整個框區」(含虛線框外的留白),只綁一次
+function bindDrawArea(){
+  if (drawAreaBound) return;
+  const wrap = document.querySelector('.sf-canvas-wrap');
+  if (!wrap) return;
+  wrap.addEventListener('touchstart', startDrawFull, { passive: false });
+  wrap.addEventListener('touchmove',  doDrawFull,   { passive: false });
+  wrap.addEventListener('touchend',   endDrawFull,  { passive: false });
+  wrap.addEventListener('touchcancel',endDrawFull,  { passive: false });
+  wrap.addEventListener('mousedown',  startDrawFull);
+  wrap.addEventListener('mousemove',  doDrawFull);
+  wrap.addEventListener('mouseup',    endDrawFull);
+  wrap.addEventListener('mouseleave', endDrawFull);
+  drawAreaBound = true;
+}
 
 function openSignFull() {
   const el = document.getElementById('signFull');
@@ -394,6 +417,12 @@ function openSignFull() {
   document.getElementById('sfInfo').textContent =
     `${empFull} · 共 ${formsList.length} 張`;
   document.body.style.overflow = 'hidden';
+
+  // 簽名頁開啟期間,鎖住整頁捲動/下拉手勢,避免寫字時畫面跳走
+  document.addEventListener('touchmove', preventPageScroll, { passive: false });
+
+  // 綁定繪圖事件(框內外都能畫,只綁一次)
+  bindDrawArea();
 
   // 監聽旋轉
   orientationHandler = () => {
@@ -407,6 +436,16 @@ function openSignFull() {
   window.addEventListener('orientationchange', orientationHandler);
   window.addEventListener('resize', resizeHandler);
 
+  // 用 ResizeObserver 確保框區尺寸一有變動就重算 canvas(修「橫向有時變窄」)
+  if (window.ResizeObserver) {
+    const wrap = document.querySelector('.sf-canvas-wrap');
+    sizeObserver = new ResizeObserver(() => {
+      clearTimeout(sizeObserverTimer);
+      sizeObserverTimer = setTimeout(reInitPad, 120);
+    });
+    if (wrap) sizeObserver.observe(wrap);
+  }
+
   checkOrientation();
   setTimeout(initPadFull, 50);
 }
@@ -415,8 +454,11 @@ function closeSignFull() {
   const el = document.getElementById('signFull');
   el.classList.remove('on');
   document.body.style.overflow = '';
+  document.removeEventListener('touchmove', preventPageScroll, { passive: false });
   if (orientationHandler) window.removeEventListener('orientationchange', orientationHandler);
   if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+  if (sizeObserver) { sizeObserver.disconnect(); sizeObserver = null; }
+  clearTimeout(sizeObserverTimer);
   orientationHandler = null;
   resizeHandler = null;
 }
@@ -457,50 +499,38 @@ function initPadFull() {
   canvasFull = document.getElementById('padFull');
   if (!canvasFull) return;
   const rect = canvasFull.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return;  // 尚未有正確尺寸,略過(等 ResizeObserver 再觸發)
   const dpr = window.devicePixelRatio || 1;
-  // 設定 canvas 像素大小(HD)
+  // 設定 canvas 像素大小(HD),跟著實際框大小走
   canvasFull.width = Math.round(rect.width * dpr);
   canvasFull.height = Math.round(rect.height * dpr);
   ctxFull = canvasFull.getContext('2d');
+  ctxFull.setTransform(1, 0, 0, 1, 0, 0);
   ctxFull.scale(dpr, dpr);
   ctxFull.lineCap = 'round';
   ctxFull.lineJoin = 'round';
   ctxFull.strokeStyle = '#1a2b3c';
   ctxFull.lineWidth = 3.5;
-
-  // 先移除舊的事件監聽,避免重複綁定
-  const newCanvas = canvasFull.cloneNode(false);
-  canvasFull.parentNode.replaceChild(newCanvas, canvasFull);
-  canvasFull = newCanvas;
-  ctxFull = canvasFull.getContext('2d');
-  ctxFull.scale(dpr, dpr);
-  ctxFull.lineCap = 'round';
-  ctxFull.lineJoin = 'round';
-  ctxFull.strokeStyle = '#1a2b3c';
-  ctxFull.lineWidth = 3.5;
-
-  // Touch/Mouse 事件(用 passive:false 確保能 preventDefault)
-  canvasFull.addEventListener('touchstart', startDrawFull, { passive: false });
-  canvasFull.addEventListener('touchmove', doDrawFull, { passive: false });
-  canvasFull.addEventListener('touchend', endDrawFull, { passive: false });
-  canvasFull.addEventListener('touchcancel', endDrawFull, { passive: false });
-  canvasFull.addEventListener('mousedown', startDrawFull);
-  canvasFull.addEventListener('mousemove', doDrawFull);
-  canvasFull.addEventListener('mouseup', endDrawFull);
-  canvasFull.addEventListener('mouseleave', endDrawFull);
+  // 繪圖事件綁在框區(bindDrawArea),不在此逐一綁畫布,避免重複綁定
 }
 
-// 座標計算(關鍵:考慮 canvas 顯示尺寸和實際 rect)
+// 座標計算(關鍵:考慮 canvas 顯示尺寸和實際 rect;並夾住邊界,寫出框也不中斷)
 function getPosFull(evt) {
   const rect = canvasFull.getBoundingClientRect();
   const e = (evt.touches && evt.touches[0]) || (evt.changedTouches && evt.changedTouches[0]) || evt;
-  return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top,
-  };
+  let x = e.clientX - rect.left;
+  let y = e.clientY - rect.top;
+  // 夾在畫布範圍內:手指滑出虛線框時,筆跡停在邊界繼續畫,而不是跳走
+  x = Math.max(0, Math.min(rect.width, x));
+  y = Math.max(0, Math.min(rect.height, y));
+  return { x, y };
 }
 
 function startDrawFull(e) {
+  // 直放遮罩顯示中(還沒橫放)不接受繪圖
+  const mask = document.getElementById('rotateMask');
+  if (mask && !mask.classList.contains('hidden')) return;
+  if (!canvasFull || !ctxFull) return;
   e.preventDefault();
   drawingFull = true;
   hasDrawn = true;
