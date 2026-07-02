@@ -1035,12 +1035,35 @@ function splitMultiDraft(idx){
     return TARGET_NAMES.indexOf(a.empKey) - TARGET_NAMES.indexOf(b.empKey);
   });
   renderDrafts();
-  // 雲端同步:刪掉舊那筆、重新加入拆開的
-  if(typeof syncDeleteDraft === 'function' && cloudId){
-    syncDeleteDraft(cloudId);
-  }
-  if(typeof syncBatchDraftsToCloud === 'function'){
-    syncBatchDraftsToCloud();
+  // 雲端同步:只動這一筆(刪掉這張合寫 + 加入拆出來的幾段),
+  // 不做「全表刪光重加」,避免雲端出現空窗、被監聽器把整份清單洗掉。
+  syncSplitToCloud(cloudId, expanded);
+}
+
+// 拆開的雲端同步:刪掉原合寫那筆,逐段加入新草稿,並記回新的 _cloudId
+async function syncSplitToCloud(cloudId, expanded){
+  if(!SYNC_ENABLED || !window.Cloud) return;
+  try{
+    if(cloudId) await Cloud.deleteDraft(cloudId);
+    for(const nd of expanded){
+      const newId = await Cloud.addDraft({
+        stage: 'batch',
+        empKey: nd.empKey, dayKey: nd.dayKey, mon: nd.mon, day: nd.day,
+        type: nd.type,
+        reason: nd.reason || null,
+        comp: nd.comp || null,
+        shift: nd.shift || null,
+        sourceCode: nd.sourceCode || '',
+        endMon: nd.endMon || null,
+        endDay: nd.endDay || null,
+        endDayKey: nd.endDayKey || null,
+        mergedCount: nd.mergedCount || null,
+        segments: nd.segments || null
+      });
+      nd._cloudId = newId;   // 記回新 ID,之後改時間才能同步
+    }
+  }catch(err){
+    console.error('[CloudSync] 拆開同步失敗:', err);
   }
 }
 
