@@ -161,6 +161,11 @@ export async function getFormById(id){
   return { id: snap.id, ...snap.data() };
 }
 
+// 刪除單張假單(給追蹤後台刪掉被駁回的錯誤假單用)
+export async function deleteFormById(id){
+  await deleteDoc(doc(db, "forms", id));
+}
+
 // 查詢歷史(可依員工、月份篩選,第二階段大量使用)
 export async function queryForms(filters = {}){
   const conds = [];
@@ -188,7 +193,7 @@ window.Cloud = {
   // Drafts
   addDraft, updateDraft, deleteDraft, watchDrafts,
   // Forms
-  archiveDraft, queryForms, getFormById
+  archiveDraft, queryForms, getFormById, deleteFormById
 };
 
 console.log("[Cloud] Firebase 模組已載入");
