@@ -51,9 +51,46 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { lineUserId, empKey } = req.body || {};
-      if (!lineUserId || !empKey) {
-        return res.status(400).json({ error: '缺少 lineUserId 或 empKey' });
+      const { lineUserId, empKey, role, supName } = req.body || {};
+      if (!lineUserId) {
+        return res.status(400).json({ error: '缺少 lineUserId' });
+      }
+
+      // 取得 LINE 使用者資料(名字、頭像)- 員工/主管共用
+      let profile = {};
+      try {
+        profile = await getUserProfile(lineUserId);
+      } catch (e) {
+        console.warn('取不到 LINE 使用者資料:', e.message);
+      }
+
+      // ===== 主管綁定(不在員工名單,自己輸入姓名)=====
+      if (role === 'supervisor') {
+        const name = (supName || '').trim();
+        if (!name) {
+          return res.status(400).json({ error: '請輸入姓名' });
+        }
+        await upsertBinding({
+          lineUserId,
+          empKey: 'sup:' + lineUserId,   // 主管專用 key(每人唯一,不與員工衝突)
+          role: 'supervisor',
+          fullName: name,
+          dept: '主管',
+          lineName: profile.displayName || null,
+          pictureUrl: profile.pictureUrl || null,
+          confirmed: false,              // 需管理者確認
+          boundAt: new Date(),
+        });
+        return res.status(200).json({
+          ok: true,
+          msg: `已提交主管綁定申請,等待管理者確認。姓名: ${name}`,
+          needConfirm: true,
+        });
+      }
+
+      // ===== 員工綁定(原邏輯)=====
+      if (!empKey) {
+        return res.status(400).json({ error: '缺少 empKey' });
       }
       const emp = ROSTER[empKey];
       if (!emp) {
@@ -68,17 +105,10 @@ export default async function handler(req, res) {
         });
       }
 
-      // 取得 LINE 使用者資料(名字、頭像)
-      let profile = {};
-      try {
-        profile = await getUserProfile(lineUserId);
-      } catch (e) {
-        console.warn('取不到 LINE 使用者資料:', e.message);
-      }
-
       await upsertBinding({
         lineUserId,
         empKey,
+        role: 'employee',
         fullName: emp.full,
         dept: emp.dept,
         lineName: profile.displayName || null,

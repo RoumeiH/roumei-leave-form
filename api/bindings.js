@@ -101,11 +101,18 @@ export default async function handler(req, res) {
           updatedAt: new Date(),
         });
 
-        // 通知員工「已完成綁定」
+        // 通知員工/主管「已完成綁定」
         try {
+          const isSup = data.role === 'supervisor';
+          const who = isSup
+            ? `主管身分「${data.fullName}」`
+            : `員工身分「${data.fullName}(${data.dept})」`;
+          const tail = isSup
+            ? '以後有假單需要主管簽核時,系統會透過 LINE 通知您。'
+            : '以後有假單需要簽名時,系統會透過 LINE 通知您。';
           await pushMessage(data.lineUserId, {
             type: 'text',
-            text: `✅ 您的員工身分「${data.fullName}(${data.dept})」已通過管理者確認。\n\n以後有假單需要簽名時,系統會透過 LINE 通知您。`,
+            text: `✅ 您的${who}已通過管理者確認。\n\n${tail}`,
           });
         } catch (e) {
           console.warn('推播通知失敗(不影響確認):', e.message);
