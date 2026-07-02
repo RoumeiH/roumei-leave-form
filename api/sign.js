@@ -1,26 +1,69 @@
 // api/sign.js
-// 員工簽名相關 API
-// GET  /api/sign?id=xxx           取得假單內容(供簽名頁載入)
-// POST /api/sign?action=submit    員工送出簽名
+// GET  /api/sign?id=xxx       取得單張假單內容
+// GET  /api/sign?emp=xxx      取得某員工所有未簽假單
+// POST /api/sign?action=submit          單張簽名
+// POST /api/sign?action=submitBatch     批次簽名(一次蓋多張)
 
 import { db } from '../lib/firebase.js';
-import { pushMessage } from '../lib/line.js';
 
 const forms = db.collection('forms');
+const bindings = db.collection('bindings');
+
+async function findLineUserId(empKey) {
+  const snap = await bindings
+    .where('empKey', '==', empKey)
+    .where('confirmed', '==', true)
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  return snap.docs[0].data().lineUserId;
+}
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { id, action } = req.query || {};
+    const { id, emp, action } = req.query || {};
 
-    // ---------- GET: 取得假單內容 ----------
-    if (req.method === 'GET') {
-      if (!id) return res.status(400).json({ error: '缺少假單 id' });
+    // ---------- GET: 取得員工所有未簽 ----------
+    if (req.method === 'GET' && emp) {
+      const lineUserId = await findLineUserId(emp);
+      if (!lineUserId) return res.status(200).json({ forms: [], empKey: emp });
+      const snap = await forms
+        .where('lineUserId', '==', lineUserId)
+        .where('status', '==', 'pending_employee')
+        .get();
+      const list = [];
+      snap.forEach(d => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          empKey: data.empKey,
+          fullName: data.fullName,
+          dept: data.dept,
+          type: data.type,
+          mon: data.mon,
+          day: data.day,
+          endMon: data.endMon || null,
+          endDay: data.endDay || null,
+          mergedCount: data.mergedCount || null,
+          segments: data.segments || null,
+          shift: data.shift || null,
+          reason: data.reason || null,
+          comp: data.comp || null,
+          rocYear: data.rocYear || 115,
+        });
+      });
+      // 按日期排序
+      list.sort((a, b) => (a.mon * 100 + a.day) - (b.mon * 100 + b.day));
+      return res.status(200).json({ forms: list, empKey: emp, count: list.length });
+    }
+
+    // ---------- GET: 取得單張假單內容(相容舊版) ----------
+    if (req.method === 'GET' && id) {
       const doc = await forms.doc(id).get();
       if (!doc.exists) return res.status(404).json({ error: '找不到此假單' });
       const d = doc.data();
@@ -46,14 +89,55 @@ export default async function handler(req, res) {
       });
     }
 
-    // ---------- POST: 送出簽名 ----------
+    // ---------- POST: 批次簽名(一次蓋多張) ----------
+    if (req.method === 'POST' && action === 'submitBatch') {
+      const body = req.body || {};
+      const { formIds, signature } = body;
+      if (!Array.isArray(formIds) || formIds.length === 0 || !signature) {
+        return res.status(400).json({ error: '缺少 formIds 或簽名' });
+      }
+      if (signature.length > 700 * 1024) {
+        return res.status(413).json({ error: '簽名檔案過大,請重新簽' });
+      }
+
+      // 檢查每張假單都是 pending 狀態
+      const docs = await Promise.all(formIds.map(fid => forms.doc(fid).get()));
+      for (const doc of docs) {
+        if (!doc.exists) {
+          return res.status(404).json({ error: `找不到假單: ${doc.id}` });
+        }
+        if (doc.data().status !== 'pending_employee') {
+          return res.status(409).json({ error: '有假單已簽名,請重新整理' });
+        }
+      }
+
+      // 批次更新
+      const batch = db.batch();
+      const now = new Date();
+      formIds.forEach(fid => {
+        batch.update(forms.doc(fid), {
+          status: 'employee_signed',
+          employeeSignatureData: signature,
+          employeeSignedAt: now,
+          updatedAt: now,
+        });
+      });
+      await batch.commit();
+
+      return res.status(200).json({
+        ok: true,
+        signedCount: formIds.length,
+        msg: `已完成 ${formIds.length} 張假單簽名`,
+      });
+    }
+
+    // ---------- POST: 單張簽名(相容舊版) ----------
     if (req.method === 'POST' && action === 'submit') {
       const body = req.body || {};
       const { id: formId, signature } = body;
       if (!formId || !signature) {
         return res.status(400).json({ error: '缺少 id 或簽名' });
       }
-      // 檢查簽名大小(base64 約需 < 500KB,避免 Firestore 文件過大)
       if (signature.length > 700 * 1024) {
         return res.status(413).json({ error: '簽名檔案過大,請重新簽' });
       }
@@ -61,7 +145,6 @@ export default async function handler(req, res) {
       const doc = await forms.doc(formId).get();
       if (!doc.exists) return res.status(404).json({ error: '找不到此假單' });
       const d = doc.data();
-
       if (d.status !== 'pending_employee') {
         return res.status(409).json({ error: '此假單已簽名或狀態異常' });
       }
@@ -72,8 +155,7 @@ export default async function handler(req, res) {
         employeeSignedAt: new Date(),
         updatedAt: new Date(),
       });
-
-      return res.status(200).json({ ok: true, msg: '簽名已送出,感謝!' });
+      return res.status(200).json({ ok: true, msg: '簽名已送出' });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
