@@ -280,6 +280,7 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: false, error: '目前沒有待主管簽核的假單' });
         }
         let okCount = 0;
+        const results = [];
         for (const doc of supSnap.docs) {
           const sup = doc.data();
           const url = `${BASE_URL}/sup-sign.html?sup=${encodeURIComponent(sup.lineUserId)}`;
@@ -301,11 +302,13 @@ export default async function handler(req, res) {
               },
             ]);
             okCount++;
+            results.push({ name: sup.fullName, ok: true });
           } catch (e) {
             console.warn('推播主管失敗:', e.message);
+            results.push({ name: sup.fullName, ok: false, error: e.message });
           }
         }
-        return res.status(200).json({ ok: true, count, supCount: okCount });
+        return res.status(200).json({ ok: true, count, supTotal: supSnap.size, supCount: okCount, results });
       }
 
       if (action === 'pushAll') {

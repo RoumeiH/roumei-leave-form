@@ -105,7 +105,7 @@ async function handleFollow(event, userId) {
   await replyMessage(event.replyToken, [
     {
       type: 'text',
-      text: '您好,歡迎加入柔美飯店假單簽核系統 🌸\n\n請先綁定您的員工身分,以便日後接收假單簽名通知。',
+      text: '您好,歡迎加入柔美飯店假單簽核系統 🌸\n\n請先綁定身分,以便日後接收假單通知。\n\n・員工:選自己的姓名\n・主管:請點名單最下方的「我是主管」',
     },
     {
       type: 'template',
@@ -113,7 +113,7 @@ async function handleFollow(event, userId) {
       template: {
         type: 'buttons',
         title: '身分綁定',
-        text: '點下方按鈕開始綁定',
+        text: '員工選姓名 · 主管點最下方「我是主管」',
         actions: [
           {
             type: 'uri',
@@ -129,14 +129,35 @@ async function handleFollow(event, userId) {
 async function handleTextMessage(event, userId) {
   const text = event.message.text.trim();
 
-  // 「我是」開頭 → 提示改用綁定連結
-  if (text.startsWith('我是') || text.includes('綁定')) {
-    await replyMessage(event.replyToken, {
-      type: 'text',
-      text: '請點選以下連結完成綁定:\n' + `${BIND_URL}?token=${userId}`,
-    });
+  // 查此人是否已完成綁定
+  const existing = await findBindingByLineId(userId);
+  const notBound = !existing || !existing.confirmed;
+  const wantsBind = text.startsWith('我是') || text.includes('綁定');
+
+  // 尚未綁定的人 → 不管傳什麼都回綁定連結;已綁定者只在關鍵字時回(避免像 chatbot)
+  if (notBound || wantsBind) {
+    await replyMessage(event.replyToken, [
+      {
+        type: 'text',
+        text: notBound
+          ? '請點下方按鈕完成身分綁定 🌸\n\n・員工:選自己的姓名\n・主管:請點名單最下方的「我是主管」'
+          : '若要重新綁定,請點下方按鈕。',
+      },
+      {
+        type: 'template',
+        altText: '請點按鈕綁定身分',
+        template: {
+          type: 'buttons',
+          title: '身分綁定',
+          text: '員工選姓名 · 主管點最下方「我是主管」',
+          actions: [
+            { type: 'uri', label: '開始綁定', uri: `${BIND_URL}?token=${userId}` },
+          ],
+        },
+      },
+    ]);
     return;
   }
 
-  // 其他訊息暫時不回覆(避免像 chatbot 過度回應)
+  // 已綁定且非關鍵字訊息 → 不回覆
 }
