@@ -2007,7 +2007,7 @@ function buildLeave(){
         <td class="lb">備註</td><td colspan="3" class="editable">${reason!=='其他'?(note||''):''}</td>
       </tr>
       <tr class="sign-row">
-        <td style="width:33.34%">副總經理：</td><td style="width:33.33%">權責主管：</td><td colspan="2" style="width:33.33%">申請人：</td>
+        <td colspan="4" style="padding:0"><table style="width:100%;table-layout:fixed;border-collapse:collapse"><tr><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">副總經理：</td><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">權責主管：</td><td class="sig-cell" style="width:33.34%;border:0">申請人：</td></tr></table></td>
       </tr>
     </table>
   </div>`;
@@ -2165,7 +2165,7 @@ function buildMultiLeave(draft){
         <td class="editable" colspan="2"></td>
       </tr>
       <tr class="sign-row">
-        <td style="width:33.34%">副總經理：</td><td colspan="2" style="width:33.33%">權責主管：</td><td colspan="3" style="width:33.33%">申請人：</td>
+        <td colspan="6" style="padding:0"><table style="width:100%;table-layout:fixed;border-collapse:collapse"><tr><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">副總經理：</td><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">權責主管：</td><td class="sig-cell" style="width:33.34%;border:0">申請人：</td></tr></table></td>
       </tr>
     </table>
   </div>`;
@@ -2226,7 +2226,7 @@ function buildOT(){
         </td>
       </tr>
       <tr class="sign-row">
-        <td style="width:33.34%">副總經理：</td><td style="width:33.33%">權責主管：</td><td colspan="2" style="width:33.33%">申請人：</td>
+        <td colspan="4" style="padding:0"><table style="width:100%;table-layout:fixed;border-collapse:collapse"><tr><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">副總經理：</td><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">權責主管：</td><td class="sig-cell" style="width:33.34%;border:0">申請人：</td></tr></table></td>
       </tr>
     </table>
   </div>`;
@@ -2280,7 +2280,7 @@ function buildMiss(){
         </td>
       </tr>
       <tr class="sign-row tall">
-        <td style="width:33.34%">申　請　人：</td><td colspan="2" style="width:33.33%">單位主管證明：</td><td colspan="3" style="width:33.33%">館店最高主管審核：</td>
+        <td colspan="6" style="padding:0"><table style="width:100%;table-layout:fixed;border-collapse:collapse"><tr><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">申　請　人：</td><td class="sig-cell" style="width:33.33%;border:0;border-right:1px solid #000">單位主管證明：</td><td class="sig-cell" style="width:33.34%;border:0">館店最高主管審核：</td></tr></table></td>
       </tr>
     </table>
   </div>`;
@@ -2715,7 +2715,8 @@ async function renderCompletedFormView(id){
 
 // 把兩個簽名疊到成品假單對應的簽名欄
 function overlaySignatures(container, empSig, supSig){
-  const cells = container.querySelectorAll('.sign-row td');
+  let cells = container.querySelectorAll('.sig-cell');
+  if(!cells.length) cells = container.querySelectorAll('.sign-row td');   // 舊版相容
   cells.forEach(td => {
     const norm = (td.textContent || '').replace(/[\s\u3000]/g, '');   // 去掉空白/全形空白
     if(empSig && norm.indexOf('申請人') !== -1){
