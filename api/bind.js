@@ -6,8 +6,12 @@
 import { upsertBinding, findBindingByEmpKey, findBindingByLineId } from '../lib/firebase.js';
 import { getUserProfile } from '../lib/line.js';
 
-// 員工名單(與前端 ROSTER 保持一致)
-const ROSTER = {
+// 排班系統(讀名冊用;規則開放,可直接讀)
+const SHIFT_PROJECT = 'hotel-shift-8fc12';
+const SHIFT_API_KEY = 'AIzaSyB9LgyqQCGjcAiWr4AZjarD8U-Um9lm9Hg';
+
+// 讀不到排班名冊時的備援名單
+const FALLBACK_ROSTER = {
   '緯宸': { full: '蔡緯宸', dept: '泊車' },
   '順正': { full: '蔡順正', dept: '泊車' },
   '小涵': { full: '鍾秀珠', dept: '房務' },
@@ -22,6 +26,49 @@ const ROSTER = {
   '俐均': { full: '賴俐均', dept: '倉管' },
 };
 
+// 解析 Firestore REST 的值格式
+function fsDecode(v) {
+  if (v == null) return null;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('nullValue' in v) return null;
+  if ('mapValue' in v) { const o = {}; const f = v.mapValue.fields || {}; for (const k in f) o[k] = fsDecode(f[k]); return o; }
+  if ('arrayValue' in v) { return (v.arrayValue.values || []).map(fsDecode); }
+  return null;
+}
+
+// 從排班系統讀員工名冊 → { 暱稱: { full:中文名, dept:職稱 } }
+async function fetchShiftRoster() {
+  const url = `https://firestore.googleapis.com/v1/projects/${SHIFT_PROJECT}/databases/(default)/documents/config/main?key=${SHIFT_API_KEY}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('讀排班名冊 HTTP ' + r.status);
+  const doc = await r.json();
+  const fields = doc.fields || {};
+  const employees = fsDecode(fields.employees) || [];
+  const depts = fsDecode(fields.depts) || [];
+  const positions = fsDecode(fields.positions) || [];
+  const deptName = {}; depts.forEach(d => { if (d && d.id) deptName[d.id] = d.name; });
+  const posName = {}; positions.forEach(p => { if (p && p.id) posName[p.id] = p.name; });
+  const roster = {};
+  employees.forEach(e => {
+    if (!e || e.active === false) return;
+    const nick = e.name; if (!nick) return;
+    const dName = deptName[e.deptId] || '';
+    roster[nick] = { full: e.cnName || nick, dept: posName[e.positionId] || dName || '房務' };
+  });
+  if (Object.keys(roster).length === 0) throw new Error('排班名冊為空');
+  if (!roster['俐均']) roster['俐均'] = { full: '賴俐均', dept: '倉管' };   // 特例:倉管
+  return roster;
+}
+
+// 取名冊(優先排班系統,失敗用備援)
+async function getRoster() {
+  try { return await fetchShiftRoster(); }
+  catch (e) { console.warn('讀排班名冊失敗,改用備援:', e.message); return FALLBACK_ROSTER; }
+}
+
 export default async function handler(req, res) {
   // CORS(讓靜態網頁能呼叫這個 API)
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -32,6 +79,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       // 回傳員工名單 + 已被綁定的員工(讓 UI 顯示已被其他人占用)
+      const ROSTER = await getRoster();
       const roster = Object.entries(ROSTER).map(([key, val]) => ({
         empKey: key,
         fullName: val.full,
@@ -92,6 +140,7 @@ export default async function handler(req, res) {
       if (!empKey) {
         return res.status(400).json({ error: '缺少 empKey' });
       }
+      const ROSTER = await getRoster();
       const emp = ROSTER[empKey];
       if (!emp) {
         return res.status(400).json({ error: '員工不存在' });
