@@ -40,6 +40,8 @@ function isManual(key){ return !!ROSTER[key]?.fixed && !SCHEDULE[key]; }  // 不
 
 // 全域狀態
 let SCHEDULE = {};   // { '小涵': { name:'小涵', raw:'小涵18', days:{ '5/1':'08-17', ... } } }
+let SCHEDULE_SOURCE = null;   // 目前班表來源:'shift'(排班系統) / 'sheet'(Google Sheet/Excel) / null
+let SHIFT_PAUSED = false;     // 是否暫停「排班系統」為主要來源(暫停時一律用 Google Sheet/Excel)
 let state = {
   source:'gs', empName:null, dayKey:null, formType:'leave',
   rocYear:115, month:null
@@ -170,6 +172,8 @@ async function loadFromGoogleSheet(){
       if(text.trim().startsWith('<')) continue; // 拿到HTML=權限不足
       const rows = csvToRows(text);
       parseScheduleRows(rows);
+      SCHEDULE_SOURCE = 'sheet';
+      if(typeof updateScheduleSourceBadge === 'function') updateScheduleSourceBadge();
       // 讀取成功 → 儲存 URL 到雲端,並加入「最近使用」清單
       if(typeof syncSaveSettings === 'function'){
         syncSaveSettings({ scheduleUrl: url });
@@ -181,6 +185,142 @@ async function loadFromGoogleSheet(){
     }catch(e){ /* try next */ }
   }
   setStatus('無法讀取，請確認共用設定為「知道連結可檢視」','err');
+}
+
+/* =========================================================
+   排班系統班表（優先來源）
+   ---------------------------------------------------------
+   來源：Cowork 自動排班系統（Firestore 專案 hotel-shift-8fc12）
+   邏輯：優先讀「已發布」班表 → 轉成本系統 SCHEDULE 結構 → 套用；
+        讀不到（未發布/查無/名字對不上）才退回 Google Sheet / Excel。
+   ========================================================= */
+
+// 排班系統的一格 → 本系統的「格子字串」（跟 Google Sheet 同格式）
+function shiftCellToCode(cell){
+  if(!cell || typeof cell !== 'object') return '';
+  if(cell.type === 'work')  return String(cell.code || '');   // 例：8-17 / 1330-2230 / 0-8
+  if(cell.type === 'leave') return String(cell.code || '');   // 例：年 / 休 / 例 / 國 / 病 / 事
+  return '';
+}
+
+// 讀排班系統某月「已發布」班表並套用。成功回 true;無資料回 false（交呼叫端退回備援）
+async function loadFromShiftSystem(gYear, month){
+  if(!(window.Cloud && typeof Cloud.getPublishedSchedule === 'function')) return false;
+  let data = null;
+  try{
+    data = await Cloud.getPublishedSchedule(gYear, month);
+  }catch(e){ console.warn('讀排班系統班表失敗：', e.message); return false; }
+  if(!data) return false;   // 未發布或查無 → 退回備援
+
+  let cfg = null;
+  try{ cfg = await Cloud.getShiftConfig(); }catch(e){ cfg = null; }
+  const empList = (cfg && Array.isArray(cfg.employees)) ? cfg.employees : [];
+  const id2name = {};
+  empList.forEach(e => { if(e && e.id) id2name[e.id] = e.name || ''; });
+
+  // 建 SCHEDULE（key = 本系統 ROSTER 短名）
+  const built = {};
+  let found = 0;
+  for(const empId in data){
+    const fullNm = id2name[empId] || '';
+    if(!fullNm) continue;
+    const shortKey = TARGET_NAMES.find(t =>
+      fullNm.includes(t) || fullNm === (ROSTER[t].full || '') || (ROSTER[t].full || '').includes(fullNm)
+    );
+    if(!shortKey || built[shortKey]) continue;
+    const days = {};
+    const dayMap = data[empId] || {};
+    for(const dateStr in dayMap){
+      const mm = String(dateStr).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if(!mm || (+mm[2]) !== month) continue;   // 只取當月
+      days[`${+mm[2]}/${+mm[3]}`] = shiftCellToCode(dayMap[dateStr]);
+    }
+    built[shortKey] = { name: shortKey, raw: fullNm, days };
+    found++;
+  }
+  if(found === 0) return false;   // 名字全對不上 → 退回備援
+
+  SCHEDULE = built;
+  SCHEDULE_SOURCE = 'shift';
+  state.month = month;
+  const mEl = document.getElementById('month'); if(mEl) mEl.value = month;
+  buildEmployeeSelect();
+  const s2 = document.getElementById('step2'); if(s2){ s2.style.opacity = 1; s2.style.pointerEvents = 'auto'; }
+  const sb = document.getElementById('stepBatch'); if(sb){ sb.style.opacity = 1; sb.style.pointerEvents = 'auto'; }
+  const warn = document.getElementById('noScheduleWarn'); if(warn) warn.style.display = 'none';
+  setStatus(`✅ 已從排班系統載入 ${found} 位員工（${gYear} 年 ${month} 月 · 已發布班表）`, 'ok');
+  updateScheduleSourceBadge();
+  return true;
+}
+
+// 優先讀排班系統,失敗才退回 Google Sheet / Excel
+async function loadScheduleAuto(){
+  const ryEl = document.getElementById('rocYear');
+  const mEl  = document.getElementById('month');
+  const ry    = parseInt(ryEl && ryEl.value, 10) || 115;
+  const month = parseInt(mEl && mEl.value, 10) || state.month || (new Date().getMonth() + 1);
+  const gYear = ry + 1911;   // 民國 → 西元
+
+  const urlEl = document.getElementById('gsUrl');
+  const url = urlEl ? urlEl.value.trim() : '';
+
+  // 已暫停排班系統來源 → 直接用 Google Sheet / Excel
+  if(SHIFT_PAUSED){
+    if(url){
+      setStatus('已暫停排班系統來源,改用 Google Sheet…', 'load');
+      await loadFromGoogleSheet();
+      return true;
+    }
+    SCHEDULE_SOURCE = null;
+    updateScheduleSourceBadge();
+    setStatus('已暫停排班系統來源,但尚未設定 Google Sheet 網址。請於下方貼上,或上傳 Excel。', 'err');
+    return false;
+  }
+
+  setStatus('讀取班表中…（優先排班系統）', 'load');
+  const ok = await loadFromShiftSystem(gYear, month);
+  if(ok) return true;
+
+  // 退回備援:已存的 Google Sheet 網址
+  if(url){
+    setStatus(`排班系統尚未發布 ${month} 月班表,改用 Google Sheet 備援…`, 'load');
+    await loadFromGoogleSheet();
+    return true;
+  }
+  SCHEDULE_SOURCE = null;
+  updateScheduleSourceBadge();
+  setStatus(`排班系統尚未發布 ${gYear} 年 ${month} 月班表,且未設定備援。請先在排班系統「發布」該月,或於下方貼 Google Sheet 網址。`, 'err');
+  return false;
+}
+
+// 切換「暫停排班系統來源」開關(勾了就一律用 Google Sheet/Excel)
+function toggleShiftPause(){
+  const chk = document.getElementById('shiftPauseChk');
+  SHIFT_PAUSED = !!(chk && chk.checked);
+  if(typeof syncSaveSettings === 'function') syncSaveSettings({ shiftPaused: SHIFT_PAUSED });
+  updateScheduleSourceBadge();
+  loadScheduleAuto().catch(e => console.warn('重新載入班表失敗：', e.message));
+}
+
+// 更新畫面上的「班表來源」標示
+function updateScheduleSourceBadge(){
+  const el = document.getElementById('scheduleSourceBadge');
+  if(!el) return;
+  if(SHIFT_PAUSED){
+    el.textContent = '⏸ 已暫停排班系統來源 · 使用 Google Sheet / Excel';
+    el.style.color = '#8a5a10';
+    return;
+  }
+  if(SCHEDULE_SOURCE === 'shift'){
+    el.textContent = '目前來源：🏨 排班系統（已發布班表）';
+    el.style.color = '#2f855a';
+  }else if(SCHEDULE_SOURCE === 'sheet'){
+    el.textContent = '目前來源：📄 Google Sheet / Excel（備援）';
+    el.style.color = '#c05621';
+  }else{
+    el.textContent = '尚未載入班表';
+    el.style.color = 'var(--ink-soft)';
+  }
 }
 
 function csvToRows(text){
@@ -256,6 +396,8 @@ function parseScheduleRows(rows){
   if(found===0){ setStatus('班表中找不到指定的員工（請確認姓名與分頁）','err'); return; }
   state.month = mainMonth;
   document.getElementById('month').value = mainMonth;
+  SCHEDULE_SOURCE = 'sheet';
+  if(typeof updateScheduleSourceBadge === 'function') updateScheduleSourceBadge();
   setStatus(`成功載入 ${found} 位員工（${mainMonth} 月班表）`,'ok');
   buildEmployeeSelect();
   const s2=document.getElementById('step2'); s2.style.opacity=1; s2.style.pointerEvents='auto';
@@ -287,9 +429,19 @@ function onEmpChange(){
 }
 function onMonthChange(){
   state.month = parseInt(document.getElementById('month').value,10) || null;
-  // 只要選了員工,月份變更就重整日期下拉
-  // (手動模式的人依賴月份;一般員工也要,因為 1-31 是依當月列的)
-  if(state.empName) refreshDays();
+
+  // 若目前來源是排班系統,換月要重新抓「該月」的已發布班表(排班是一個月一份文件)
+  if(SCHEDULE_SOURCE === 'shift' && state.month){
+    const ry = parseInt(document.getElementById('rocYear').value,10) || 115;
+    loadFromShiftSystem(ry + 1911, state.month).then(ok => {
+      if(!ok) setStatus(`排班系統尚未發布 ${state.month} 月班表。可改貼下方 Google Sheet,或到排班系統發布該月。`,'err');
+      if(state.empName) refreshDays();
+    }).catch(()=>{ if(state.empName) refreshDays(); });
+  }else{
+    // 只要選了員工,月份變更就重整日期下拉
+    if(state.empName) refreshDays();
+  }
+
   // 同步民國年+月份到雲端
   if(typeof syncSaveSettings === 'function' && state.month){
     const rocYear = parseInt(document.getElementById('rocYear').value,10) || 115;
@@ -1855,7 +2007,7 @@ function buildLeave(){
         <td class="lb">備註</td><td colspan="3" class="editable">${reason!=='其他'?(note||''):''}</td>
       </tr>
       <tr class="sign-row">
-        <td>副總經理：</td><td>權責主管：</td><td colspan="2">申請人：</td>
+        <td style="width:33.34%">副總經理：</td><td style="width:33.33%">權責主管：</td><td colspan="2" style="width:33.33%">申請人：</td>
       </tr>
     </table>
   </div>`;
@@ -2013,7 +2165,7 @@ function buildMultiLeave(draft){
         <td class="editable" colspan="2"></td>
       </tr>
       <tr class="sign-row">
-        <td>副總經理：</td><td colspan="2">權責主管：</td><td colspan="3">申請人：</td>
+        <td style="width:33.34%">副總經理：</td><td colspan="2" style="width:33.33%">權責主管：</td><td colspan="3" style="width:33.33%">申請人：</td>
       </tr>
     </table>
   </div>`;
@@ -2074,7 +2226,7 @@ function buildOT(){
         </td>
       </tr>
       <tr class="sign-row">
-        <td>副總經理：</td><td>權責主管：</td><td colspan="2">申請人：</td>
+        <td style="width:33.34%">副總經理：</td><td style="width:33.33%">權責主管：</td><td colspan="2" style="width:33.33%">申請人：</td>
       </tr>
     </table>
   </div>`;
@@ -2128,7 +2280,7 @@ function buildMiss(){
         </td>
       </tr>
       <tr class="sign-row tall">
-        <td>申　請　人：</td><td colspan="2">單位主管證明：</td><td colspan="3">館店最高主管審核：</td>
+        <td style="width:33.34%">申　請　人：</td><td colspan="2" style="width:33.33%">單位主管證明：</td><td colspan="3" style="width:33.33%">館店最高主管審核：</td>
       </tr>
     </table>
   </div>`;
@@ -2224,6 +2376,16 @@ async function bootstrapCloud(){
       RECENT_URLS = s.recentUrls;
       renderRecentUrls();
     }
+
+    // 載入「暫停排班來源」設定
+    if(typeof s.shiftPaused === 'boolean'){
+      SHIFT_PAUSED = s.shiftPaused;
+      const chk = document.getElementById('shiftPauseChk');
+      if(chk) chk.checked = SHIFT_PAUSED;
+    }
+
+    // 自動載入班表:優先排班系統(已發布),讀不到才退回 Google Sheet(不阻塞開機)
+    loadScheduleAuto().catch(e => console.warn('自動載入班表失敗：', e.message));
 
     // 2. 開始監聽雲端草稿變化(即時同步)
     UNSUB_DRAFTS = Cloud.watchDrafts(cloudDrafts => {

@@ -450,6 +450,23 @@
     <!-- 步驟1：載入班表 -->
     <div class="section">
       <h2><span class="num">1</span>載入班表</h2>
+
+      <!-- 主要來源:自動排班系統(優先) -->
+      <div style="background:#f0f6ff;border:1px solid #cfe0f5;border-radius:9px;padding:11px 12px;margin-bottom:12px">
+        <div style="font-size:12.5px;font-weight:700;color:#1f4f82;margin-bottom:8px">🏨 主要來源:自動排班系統</div>
+        <button class="btn" style="width:100%" onclick="loadScheduleAuto()">🔄 從排班系統載入當月班表</button>
+        <div id="scheduleSourceBadge" style="margin-top:8px;font-size:12px;color:var(--ink-soft)">尚未載入班表</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-size:12px;color:#8a5a10;cursor:pointer;line-height:1.5">
+          <input type="checkbox" id="shiftPauseChk" onchange="toggleShiftPause()" style="width:16px;height:16px;margin-top:1px;flex-shrink:0">
+          <span>暫停排班系統來源,一律改用下方 Google Sheet / Excel(排班系統正式啟用後,再取消勾選)</span>
+        </label>
+        <div style="margin-top:8px;padding:8px 10px;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;font-size:11.5px;color:#8a5a10;line-height:1.6">
+          📌 <b>目前狀態</b>:排班系統班表尚未校準,暫時<b>以 Google Sheet 為準</b>,假單也以 Google Sheet 產出。待排班系統修正、正式啟用後,再<b>取消勾選</b>切換為排班優先。
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--ink-soft);line-height:1.55">系統開機會自動優先讀「已發布」的排班班表;讀不到才用下方 Google Sheet / Excel 備援。</div>
+      </div>
+
+      <div style="font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:6px">備援來源(排班未發布該月時使用):</div>
       <div class="tabs">
         <button id="tabGS" class="on" onclick="switchSource('gs')">Google Sheet</button>
         <button id="tabFile" onclick="switchSource('file')">上傳 Excel</button>

@@ -37,6 +37,37 @@ const db = getFirestore(app);
 // 使用「本機儲存」永久保持登入狀態(關掉瀏覽器再打開也不用重登)
 setPersistence(auth, browserLocalPersistence);
 
+/* ---------- 排班系統(第二個 Firebase app,唯讀班表)----------
+   來源:Cowork 自動排班系統 專案 hotel-shift-8fc12
+   用途:優先讀「已發布」班表;讀不到再退回 Google Sheet。 */
+const shiftFirebaseConfig = {
+  apiKey: "AIzaSyB9LgyqQCGjcAiWr4AZjarD8U-Um9lm9Hg",
+  authDomain: "hotel-shift-8fc12.firebaseapp.com",
+  projectId: "hotel-shift-8fc12",
+  storageBucket: "hotel-shift-8fc12.firebasestorage.app",
+  messagingSenderId: "676892573469",
+  appId: "1:676892573469:web:f14bb143a7f6fe5d662bf4"
+};
+const shiftApp = initializeApp(shiftFirebaseConfig, "shift");
+const shiftDb = getFirestore(shiftApp);
+
+// 取某月「已發布」班表;未發布或查無 → 回 null(讓假單系統退回讀 Google Sheet)
+export async function getPublishedSchedule(year, month /* 1~12 */){
+  const key = `${year}-${String(month).padStart(2, "0")}`;
+  const snap = await getDoc(doc(shiftDb, "schedules", key));
+  if(!snap.exists()) return null;
+  const d = snap.data();
+  if(d.schedStatus !== "published") return null;   // 未發布 → 視同沒有
+  return d.data || null;   // { empId: { "YYYY-MM-DD": {type, code, ...} } }
+}
+
+// 取排班系統的員工/部門對照(config/main),用來把 empId 轉成姓名
+export async function getShiftConfig(){
+  const snap = await getDoc(doc(shiftDb, "config", "main"));
+  if(!snap.exists()) return null;
+  return snap.data();   // { employees:[{id,name,deptId,...}], depts:[...], positions:[...] }
+}
+
 /* =========================================================
    認證(Authentication)
    ========================================================= */
@@ -193,7 +224,9 @@ window.Cloud = {
   // Drafts
   addDraft, updateDraft, deleteDraft, watchDrafts,
   // Forms
-  archiveDraft, queryForms, getFormById, deleteFormById
+  archiveDraft, queryForms, getFormById, deleteFormById,
+  // 排班系統(唯讀班表)
+  getPublishedSchedule, getShiftConfig
 };
 
 console.log("[Cloud] Firebase 模組已載入");
