@@ -1,3 +1,6 @@
 {
-  "version": 2
+  "version": 2,
+  "crons": [
+    { "path": "/api/cron-notify-supervisors", "schedule": "0 4 * * *" }
+  ]
 }
