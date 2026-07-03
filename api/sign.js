@@ -5,55 +5,9 @@
 // POST /api/sign?action=submitBatch     批次簽名(一次蓋多張)
 
 import { db } from '../lib/firebase.js';
-import { pushMessage } from '../lib/line.js';
 
 const forms = db.collection('forms');
 const bindings = db.collection('bindings');
-
-const BASE_URL = process.env.PUBLIC_BASE_URL || 'https://roumei-leave-form.vercel.app';
-
-// 員工簽完後,推播通知所有「已確認主管」有待簽核假單
-async function notifySupervisors() {
-  try {
-    const supSnap = await bindings
-      .where('role', '==', 'supervisor')
-      .where('confirmed', '==', true)
-      .get();
-    if (supSnap.empty) return;
-
-    // 目前待主管簽核的張數(員工已簽、尚未完成)
-    const pendSnap = await forms.where('status', '==', 'employee_signed').get();
-    const count = pendSnap.size;
-    if (count === 0) return;
-
-    for (const doc of supSnap.docs) {
-      const sup = doc.data();
-      const url = `${BASE_URL}/sup-sign.html?sup=${encodeURIComponent(sup.lineUserId)}`;
-      try {
-        await pushMessage(sup.lineUserId, [
-          {
-            type: 'text',
-            text: `👔 ${sup.fullName}您好\n\n目前有 ${count} 張假單已由員工簽名,待您簽核。\n請點下方按鈕查看並簽核。`,
-          },
-          {
-            type: 'template',
-            altText: `有 ${count} 張假單待您簽核`,
-            template: {
-              type: 'buttons',
-              title: '主管簽核',
-              text: `共 ${count} 張待簽核`,
-              actions: [{ type: 'uri', label: '查看並簽核', uri: url }],
-            },
-          },
-        ]);
-      } catch (e) {
-        console.warn('推播主管失敗:', e.message);
-      }
-    }
-  } catch (e) {
-    console.warn('notifySupervisors 失敗(不影響員工簽名):', e.message);
-  }
-}
 
 async function findLineUserId(empKey) {
   const snap = await bindings
@@ -170,8 +124,7 @@ export default async function handler(req, res) {
       });
       await batch.commit();
 
-      // 員工簽完 → 通知主管有待簽核(best-effort,不影響簽名結果)
-      await notifySupervisors();
+      // (主管通知改為「每月定時排程 + 後台手動推」,不在員工簽名當下推,避免洗版)
 
       return res.status(200).json({
         ok: true,
@@ -205,8 +158,7 @@ export default async function handler(req, res) {
         updatedAt: new Date(),
       });
 
-      // 員工簽完 → 通知主管有待簽核
-      await notifySupervisors();
+      // (主管通知改為「每月定時排程 + 後台手動推」,不在員工簽名當下推,避免洗版)
 
       return res.status(200).json({ ok: true, msg: '簽名已送出' });
     }
