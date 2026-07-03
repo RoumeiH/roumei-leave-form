@@ -16,27 +16,35 @@ const LOGO_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACtCAYAAACO
      一般人員寫法：   小名: { full:'全名' }
      固定工時人員：   小名: { full:'全名', fixed:{start:'08:30', end:'17:30'} }
    ============================================================ */
-const ROSTER = {
-  '緯宸': { full:'蔡緯宸', dept:'泊車' },
-  '順正': { full:'蔡順正', dept:'泊車' },
-  '小涵': { full:'鍾秀珠', dept:'房務' },
-  '淑雲': { full:'陳淑雲', dept:'房務' },
-  '婉茹': { full:'黃婉茹', dept:'房務' },
-  '玉美': { full:'黃玉美', dept:'房務' },
-  '玉樺': { full:'陳玉樺', dept:'房務' },
-  '俊傑': { full:'林秉德', dept:'房務' },
-  '東志': { full:'鍾東志', dept:'房務' },
-  '敏智': { full:'廖敏智', dept:'房務' },
-  '莉莉': { full:'張莉莉', dept:'房務' },
-  '俐均': { full:'賴俐均', dept:'倉管', fixed:{start:'08:30', end:'17:30'} }   // 不在班表，固定工時
+// 內建名冊(當「讀排班系統名冊」失敗時的備援;正常會被排班名冊覆蓋)
+let ROSTER = {
+  '緯宸': { full:'蔡緯宸', dept:'泊車', autoGen:true },
+  '順正': { full:'蔡順正', dept:'泊車', autoGen:true },
+  '小涵': { full:'鍾秀珠', dept:'房務', autoGen:true },
+  '淑雲': { full:'陳淑雲', dept:'房務', autoGen:true },
+  '婉茹': { full:'黃婉茹', dept:'房務', autoGen:true },
+  '玉美': { full:'黃玉美', dept:'房務', autoGen:true },
+  '玉樺': { full:'陳玉樺', dept:'房務', autoGen:true },
+  '俊傑': { full:'林秉德', dept:'房務', autoGen:true },
+  '東志': { full:'鍾東志', dept:'房務', autoGen:true },
+  '敏智': { full:'廖敏智', dept:'房務', autoGen:true },
+  '莉莉': { full:'張莉莉', dept:'房務', autoGen:true },
+  '俐均': { full:'賴俐均', dept:'倉管', fixed:{start:'08:30', end:'17:30'}, autoGen:false }   // 不在班表，固定工時
 };
-const TARGET_NAMES = Object.keys(ROSTER);   // 比對班表的關鍵字
+let TARGET_NAMES = Object.keys(ROSTER);   // 比對班表的關鍵字
 const DEPT = '房務';   // 預設職稱（找不到對照時用）
+
+// 開放「班表自動產單」的部門(其餘部門只能手動開單)
+const AUTO_GEN_DEPTS = ['房務部', '客務泊車'];
+// 不在排班系統、但仍要保留的特例員工(例:倉管)
+const ROSTER_EXTRAS = {
+  '俐均': { full:'賴俐均', dept:'倉管', deptName:'倉管', fixed:{start:'08:30', end:'17:30'}, autoGen:false }
+};
 
 function fullName(key){ return ROSTER[key]?.full || key; }
 function deptOf(key){ return ROSTER[key]?.dept || DEPT; }
 function fixedShift(key){ return ROSTER[key]?.fixed || null; }
-function isManual(key){ return !!ROSTER[key]?.fixed && !SCHEDULE[key]; }  // 不在班表＋有固定工時 → 手動模式
+function isManual(key){ return !SCHEDULE[key]; }  // 不在班表 → 手動模式(可自訂時間)
 
 // 全域狀態
 let SCHEDULE = {};   // { '小涵': { name:'小涵', raw:'小涵18', days:{ '5/1':'08-17', ... } } }
@@ -201,6 +209,41 @@ function shiftCellToCode(cell){
   if(cell.type === 'work')  return String(cell.code || '');   // 例：8-17 / 1330-2230 / 0-8
   if(cell.type === 'leave') return String(cell.code || '');   // 例：年 / 休 / 例 / 國 / 病 / 事
   return '';
+}
+
+// 從排班系統讀「員工名冊」→ 動態建立 ROSTER
+// key=暱稱(排班的 name)、full=cnName(印假單)、dept=職稱、deptName=部門、autoGen=是否開放自動產
+async function loadShiftRoster(){
+  if(!(window.Cloud && typeof Cloud.getShiftConfig === 'function')) return false;
+  let cfg = null;
+  try{ cfg = await Cloud.getShiftConfig(); }
+  catch(e){ console.warn('讀排班名冊失敗：', e.message); return false; }
+  if(!cfg || !Array.isArray(cfg.employees) || cfg.employees.length === 0) return false;
+
+  const posName = {}; (cfg.positions || []).forEach(p => { if(p && p.id) posName[p.id] = p.name; });
+  const deptName = {}; (cfg.depts || []).forEach(d => { if(d && d.id) deptName[d.id] = d.name; });
+
+  const built = {};
+  cfg.employees.forEach(e => {
+    if(!e || e.active === false) return;
+    const nick = e.name; if(!nick) return;
+    const dName = deptName[e.deptId] || '';
+    built[nick] = {
+      full: e.cnName || nick,                          // 印在假單的中文姓名
+      dept: posName[e.positionId] || dName || DEPT,    // 印在假單的職稱
+      deptName: dName,                                 // 部門(判斷是否自動產)
+      empId: e.id,
+      role: e.role || 'employee',
+      autoGen: AUTO_GEN_DEPTS.includes(dName),
+    };
+  });
+  if(Object.keys(built).length === 0) return false;
+
+  Object.assign(built, ROSTER_EXTRAS);   // 併入特例(倉管等不在排班系統的人)
+  ROSTER = built;
+  TARGET_NAMES = Object.keys(ROSTER);
+  console.log(`[名冊] 已從排班系統載入 ${TARGET_NAMES.length} 人`);
+  return true;
 }
 
 // 讀排班系統某月「已發布」班表並套用。成功回 true;無資料回 false（交呼叫端退回備援）
@@ -453,14 +496,15 @@ function refreshDays(){
   const preview = document.getElementById('schedPreview');
   if(!state.empName){ daySel.innerHTML='<option>—</option>'; preview.style.display='none'; return; }
 
-  // 手動模式（不在班表、有固定工時）：列出當月 1~31 日，時間用固定工時
+  // 手動模式（不在班表）：列出當月 1~31 日;有固定工時就帶入,沒有則讓使用者自訂
   if(isManual(state.empName)){
     const fx = fixedShift(state.empName);
     const M = parseInt(document.getElementById('month').value,10) || state.month || '';
     daySel.innerHTML = '<option value="">— 請選擇日期 —</option>';
     if(M){
       for(let d=1; d<=31; d++){
-        daySel.innerHTML += `<option value="${M}/${d}">${d} 日 ｜ ${fx.start}-${fx.end}</option>`;
+        const tip = fx ? ` ｜ ${fx.start}-${fx.end}` : '（自訂時間）';
+        daySel.innerHTML += `<option value="${M}/${d}">${d} 日${tip}</option>`;
       }
     }else{
       daySel.innerHTML = '<option value="">請先在上方填月份</option>';
@@ -685,6 +729,7 @@ function scanSchedule(options={}){
   for(const empKey of TARGET_NAMES){
     const emp = SCHEDULE[empKey];
     if(!emp) continue;   // 不在班表（如手動模式的賴俐均）跳過
+    if(ROSTER[empKey] && ROSTER[empKey].autoGen === false) continue;   // 該部門未開放自動產 → 跳過(只能手動開)
     for(const dayKey in emp.days){
       const [m,d] = dayKey.split('/').map(Number);
       if(monthFilter && m !== monthFilter) continue;
@@ -2383,6 +2428,9 @@ async function bootstrapCloud(){
       const chk = document.getElementById('shiftPauseChk');
       if(chk) chk.checked = SHIFT_PAUSED;
     }
+
+    // 先讀排班系統「員工名冊」(失敗則用內建備援名冊)
+    await loadShiftRoster().catch(() => {});
 
     // 自動載入班表:優先排班系統(已發布),讀不到才退回 Google Sheet(不阻塞開機)
     loadScheduleAuto().catch(e => console.warn('自動載入班表失敗：', e.message));
