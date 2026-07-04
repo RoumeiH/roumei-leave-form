@@ -2786,7 +2786,7 @@ function printCurrentForm(){
     + '<meta name="viewport" content="width=device-width,initial-scale=1">'
     + styles
     + '<style>body{background:#fff;margin:0;padding:10mm}'
-    + '.sig-img{height:28px;vertical-align:middle;margin-left:6px}'
+    + '.sig-img{height:34px;vertical-align:middle;margin-left:6px}'
     + '@media print{body{padding:0}}</style>'
     + '</head><body>' + (window.__fvHtml || '') + '</body></html>'
   );
