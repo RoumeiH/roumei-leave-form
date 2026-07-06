@@ -1047,6 +1047,8 @@ function renderDrafts(){
       : '');
 
   if(BATCH_DRAFTS.length===0){
+    // 沒有批次草稿時,若列印清單(含手動單)還有東西,改顯示列印清單,避免手動單看起來不見
+    if(PRINT_LIST.length > 0){ renderStage(); return; }
     body.innerHTML = `<div class="empty-stage"><div>
       <div class="big">🔍</div><h3>沒有掃到任何符合規則的班別</h3>
       <p>該月班表中沒有「年」「國加」「休加」的資料。您仍可用左側「手動開單」逐張處理。</p>
