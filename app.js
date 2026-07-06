@@ -1220,6 +1220,7 @@ function renderExistingPreview(){
           <span class="qno">${i+1}</span>
           <span class="qlabel">${it.label}</span>
           <span class="qacts">
+            <button onclick="pushPrintItemToLine(${i})" class="line" title="推 LINE 給員工簽名">📱</button>
             <button onclick="removeItem(${i});renderDrafts()" class="del">✕</button>
           </span>
         </div>`).join('')}
@@ -1442,6 +1443,9 @@ function draftToFormPayload(d){
     shift: d.shift || null,
     reason: d.reason || null,
     comp: d.comp || null,
+    agent: d.agent || null,
+    note: d.note || null,
+    otherReason: d.otherReason || null,
     sourceCode: d.sourceCode || '',
     rocYear: rocY(),
   };
@@ -1476,6 +1480,43 @@ async function pushOneToLine(idx){
 
     alert(`✅ 已推播給 ${name}(共 ${data2.count} 張)`);
     removeDraft(idx);
+  }catch(err){
+    alert(`❌ 推播失敗: ${err.message}`);
+  }
+}
+
+// 推播「列印清單」中的手動單到 LINE 給員工簽名(手動開單也能推)
+async function pushPrintItemToLine(idx){
+  const it = PRINT_LIST[idx];
+  if(!it || !it.draft){
+    alert('這張缺少可推播的資料(可能是舊資料)。請重新整理頁面,或重新開一張後再推。');
+    return;
+  }
+  const d = it.draft;
+  const name = fullName(d.empKey);
+  if(!confirm(`確定推播「${name}」的假單到 LINE?\n對方會收到 LINE 訊息,點連結進去簽名。\n\n(若該員工另有其他待簽假單,會一起提醒)`)) return;
+
+  try{
+    // 1. 先建立假單(存資料庫,不推播)
+    const res1 = await fetch('/api/forms?action=create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draftToFormPayload(d)),
+    });
+    const data1 = await res1.json();
+    if(!res1.ok) throw new Error(data1.error || '建立失敗');
+
+    // 2. 推播該員工所有未簽的
+    const res2 = await fetch('/api/forms?action=push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empKey: d.empKey }),
+    });
+    const data2 = await res2.json();
+    if(!res2.ok) throw new Error(data2.error || '推播失敗');
+
+    // 保留在列印清單(仍可列印紙本);僅提示已推播
+    alert(`✅ 已推播給 ${name}(共 ${data2.count} 張)\n\n(這張仍留在列印清單,若不需要紙本可自行 ✕ 移除)`);
   }catch(err){
     alert(`❌ 推播失敗: ${err.message}`);
   }
@@ -1575,7 +1616,7 @@ async function addAllDraftsToPrintList(){
   // 本機更新
   for(const d of items){
     const html = renderDraftAsForm(d);
-    PRINT_LIST.push({ html, label: makeLabel(d) });
+    PRINT_LIST.push({ html, label: makeLabel(d), draft: d });
   }
   const n = items.length;
   BATCH_DRAFTS = [];
@@ -1660,9 +1701,9 @@ function renderDraftAsForm(d){
       <input id="f_eh" value="${+eH}"><input id="f_em" value="${+eM}">
       <input id="f_endDay" value="${endDay}">
       <select id="f_reason"><option selected>${d.reason||'特休假'}</option></select>
-      <input id="f_otherReason" value="">
+      <input id="f_otherReason" value="${attrEsc(d.otherReason)}">
       <input id="f_days" value="${days||''}"><input id="f_hrs" value="${hrs||''}"><input id="f_mins" value="${mins||''}">
-      <input id="f_agent" value=""><input id="f_note" value="">
+      <input id="f_agent" value="${attrEsc(d.agent)}"><input id="f_note" value="${attrEsc(d.note)}">
     `;
     document.body.appendChild(tmp);
     html = buildLeave();
@@ -1693,9 +1734,9 @@ function renderDraftAsForm(d){
       <input id="f_sh" value="${+sH}"><input id="f_sm" value="${+sM}">
       <input id="f_eh" value="${+eH}"><input id="f_em" value="${+eM}">
       <input id="f_oth" value=""><input id="f_otm" value="">
-      <input id="f_reason" value="人力需求">
+      <input id="f_reason" value="${attrEsc(d.reason||'人力需求')}">
       <select id="f_comp"><option selected>${d.comp||'補休'}</option></select>
-      <input id="f_note" value="">
+      <input id="f_note" value="${attrEsc(d.note)}">
     `;
     document.body.appendChild(tmp);
     html = buildOT();
@@ -1899,6 +1940,8 @@ function onReasonChange(){
 
 function val(id,d=''){ const e=document.getElementById(id); return e?e.value:d; }
 function pad(n){ return String(n).padStart(2,'0'); }
+// 把自由文字塞進 HTML 屬性值前先跳脫,避免含引號/角括號時破版
+function attrEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function empName(){ return state.empName ? fullName(state.empName) : ''; }
 function rocY(){ return parseInt(val('rocYear'),10)||state.rocYear||115; }
@@ -1918,24 +1961,33 @@ function generate(){
   else { unit=buildMiss(); kind='未刷卡證明單'; }
 
   const label = `${empName()}｜${rocY()}年${mon()}月${currentDay()}日｜${kind}`;
-  PRINT_LIST.push({html:unit, label});
+
+  const type = state.formType==='leave' ? 'leave'
+             : state.formType==='ot'    ? 'ot'
+             : state.formType==='wrong' ? 'wrong'
+             : 'miss';
+  // 從「當下畫面」擷取完整欄位(含職務代理人/備註/其他事由),同時供列印與推 LINE 兩用
+  const draft = {
+    empKey: state.empName,
+    dayKey: state.dayKey,
+    mon: state.month,
+    day: currentDay(),
+    type,
+    shift: currentShift() || effectiveShift() || { start:'', end:'' },
+    sourceCode: currentCode(),
+    reason: val('f_reason') || null,
+    comp: val('f_comp') || null,
+    agent: val('f_agent') || null,
+    note: val('f_note') || null,
+    otherReason: val('f_otherReason') || null,
+    endDay: val('f_endDay') || null,
+  };
+
+  PRINT_LIST.push({html:unit, label, draft});
   renderStage();
 
   // 同步到雲端(手動開單也存,供多裝置同步)
   if(typeof syncAddToPrintList === 'function' && state.empName && state.dayKey){
-    const type = state.formType==='leave' ? 'leave'
-               : state.formType==='ot'    ? 'ot'
-               : state.formType==='wrong' ? 'wrong'
-               : 'miss';
-    const draft = {
-      empKey: state.empName,
-      dayKey: state.dayKey,
-      mon: state.month,
-      day: currentDay(),
-      type,
-      shift: currentShift() || effectiveShift() || { start:'', end:'' },
-      sourceCode: currentCode()
-    };
     syncAddToPrintList(draft, label);
   }
 }
@@ -1966,6 +2018,7 @@ function renderStage(){
       <span class="qacts">
         <button onclick="moveItem(${i},-1)" ${i===0?'disabled':''} title="上移">↑</button>
         <button onclick="moveItem(${i},1)" ${i===PRINT_LIST.length-1?'disabled':''} title="下移">↓</button>
+        <button onclick="pushPrintItemToLine(${i})" class="line" title="推 LINE 給員工簽名">📱</button>
         <button onclick="removeItem(${i})" class="del" title="刪除">✕</button>
       </span>
     </div>`).join('');
@@ -2452,6 +2505,9 @@ async function bootstrapCloud(){
         type: d.type,
         reason: d.reason,
         comp: d.comp,
+        agent: d.agent,
+        note: d.note,
+        otherReason: d.otherReason,
         shift: d.shift,
         sourceCode: d.sourceCode,
         endMon: d.endMon,
@@ -2462,22 +2518,27 @@ async function bootstrapCloud(){
       }));
 
       // 列印清單:雲端存的是「假單原始資料」,本機需要 html 版
-      // 重新渲染每一張假單的 HTML(用當時的規則產生)
-      PRINT_LIST = printList.map(d => ({
-        _cloudId: d.id,
-        label: d.label,
-        html: renderDraftAsForm({
+      // 重新渲染每一張假單的 HTML(用當時的規則產生),並保留結構化 draft 供推 LINE
+      PRINT_LIST = printList.map(d => {
+        const draftObj = {
           empKey: d.empKey, dayKey: d.dayKey, mon: d.mon, day: d.day,
           type: d.type, reason: d.reason, comp: d.comp, shift: d.shift,
           sourceCode: d.sourceCode,
+          agent: d.agent, note: d.note, otherReason: d.otherReason,
           // 多段與連續合併必要欄位
           segments: d.segments,
           endMon: d.endMon,
           endDay: d.endDay,
           endDayKey: d.endDayKey,
           mergedCount: d.mergedCount
-        })
-      }));
+        };
+        return {
+          _cloudId: d.id,
+          label: d.label,
+          draft: draftObj,
+          html: renderDraftAsForm(draftObj)
+        };
+      });
 
       // 決定該顯示什麼畫面
       if(BATCH_DRAFTS.length > 0){
@@ -2513,6 +2574,9 @@ async function syncBatchDraftsToCloud(){
         type: d.type,
         reason: d.reason || null,
         comp: d.comp || null,
+        agent: d.agent || null,
+        note: d.note || null,
+        otherReason: d.otherReason || null,
         shift: d.shift || null,
         sourceCode: d.sourceCode || '',
         // 合併過的年假額外欄位
@@ -2555,6 +2619,9 @@ async function syncAddToPrintList(draft, label){
       type: draft.type,
       reason: draft.reason || null,
       comp: draft.comp || null,
+      agent: draft.agent || null,
+      note: draft.note || null,
+      otherReason: draft.otherReason || null,
       shift: draft.shift || null,
       sourceCode: draft.sourceCode || '',
       // 多段合寫必要欄位(不存的話載回來會空)
@@ -2722,6 +2789,7 @@ async function renderCompletedFormView(id){
     mon: f.mon, day: f.day,
     type: f.type,
     reason: f.reason, comp: f.comp,
+    agent: f.agent, note: f.note, otherReason: f.otherReason,
     shift: f.shift,
     endMon: f.endMon, endDay: f.endDay,
     mergedCount: f.mergedCount,
