@@ -1934,10 +1934,22 @@ function calcLeaveTotal(){
 }
 
 /* 假別選「其他」時，顯示自訂事由欄 */
+// 病假需檢附診斷書的固定註記(選到病假時自動帶入備註)
+const SICK_LEAVE_NOTE = '須提供符合請假日期的診斷書(無法使用收據作為依據),請另繳交紙本診斷書。';
 function onReasonChange(){
   const r = val('f_reason');
   const wrap = document.getElementById('otherWrap');
   if(wrap) wrap.style.display = (r==='其他') ? 'block' : 'none';
+  // 病假 → 備註自動帶入診斷書註記(僅在備註空白或原本就是此註記時,避免蓋掉人工填的字)
+  const noteEl = document.getElementById('f_note');
+  if(noteEl){
+    const cur = noteEl.value.trim();
+    if(r==='病假'){
+      if(!cur || cur===SICK_LEAVE_NOTE) noteEl.value = SICK_LEAVE_NOTE;
+    }else if(cur===SICK_LEAVE_NOTE){
+      noteEl.value = '';   // 從病假改成其他假別 → 清掉自動註記
+    }
+  }
 }
 
 function val(id,d=''){ const e=document.getElementById(id); return e?e.value:d; }
@@ -2819,6 +2831,15 @@ async function renderCompletedFormView(id){
     ? '<span style="color:#2f9e6d">✓ 已完成(員工 + 主管皆已簽名)</span>'
     : (f.status === 'employee_signed' ? '<span style="color:#c89b3c">員工已簽,待主管簽核</span>' : '');
 
+  // 診斷書(病假佐證):有上傳才顯示,獨立成第二頁,列印/存 PDF 會一起帶進去
+  const certHtml = f.medicalCertData
+    ? `<div class="fv-sheet cert-sheet" style="page-break-before:always;text-align:center">
+         <h3 style="margin:6px 0 12px;font-size:16px">診斷書(病假佐證)</h3>
+         <div style="font-size:12px;color:#666;margin-bottom:10px">${who} · ${f.mon}/${f.day}　病假檢附</div>
+         <img src="${f.medicalCertData}" style="max-width:100%;max-height:1000px;display:block;margin:0 auto;border:1px solid #ddd">
+       </div>`
+    : '';
+
   const root = document.createElement('div');
   root.id = 'formViewRoot';
   root.innerHTML = `
@@ -2827,7 +2848,7 @@ async function renderCompletedFormView(id){
       <div class="fv-title">${who} · ${f.mon}/${f.day} 假單　<span class="fv-status">${statusNote}</span></div>
       <button class="fv-print" onclick="printCurrentForm()">🖨 列印 / 存 PDF</button>
     </div>
-    <div class="fv-sheet">${finalHtml}</div>`;
+    <div class="fv-sheet">${finalHtml}</div>${certHtml}`;
   document.body.appendChild(root);
 }
 

@@ -57,6 +57,14 @@
   .form-card .row .val.big{font-size:15px;font-weight:800;letter-spacing:1px}
   .form-card .seg{padding:4px 0;font-size:13px;border-bottom:1px dashed #eaf0f5}
   .form-card .seg:last-child{border-bottom:none}
+  .cert-row .cert-hint{font-size:12px;color:#c0392b;font-weight:600;margin-bottom:6px;line-height:1.5}
+  .cert-btn{background:#fff;border:1.5px solid var(--brand);color:var(--brand);
+    padding:8px 16px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .cert-btn:active{background:#f0f6f4}
+  .cert-thumb{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .cert-thumb .cert-img{max-width:140px;max-height:140px;border-radius:8px;border:1px solid #cbd5d0}
+  .cert-remove{background:#fbeaea;border:1px solid #e6b8b8;color:#c0392b;
+    padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
 
   .form-no{
     display:inline-block;background:var(--brand);color:#fff;
@@ -362,6 +370,18 @@ function renderFormCard(f, num, Y) {
     ? (f.comp === '加班費' ? '加班費' : '補休')
     : (f.reason || '');
 
+  // 病假 → 顯示「上傳診斷書」區塊(選填,亦可另繳紙本)
+  const certHtml = isSickForm(f) ? `
+      <div class="row cert-row">
+        <div class="lb">診斷書</div>
+        <div class="val">
+          <div class="cert-hint">⚠ 病假<b>必須</b>檢附診斷書(必填,不得以收據替代),請拍照或選圖上傳;另須繳交紙本。未附將無法簽名送出。</div>
+          <input type="file" accept="image/*" id="certInput_${f.id}" style="display:none" onchange="onCertPick(this,'${f.id}')">
+          <button type="button" class="cert-btn" onclick="document.getElementById('certInput_${f.id}').click()">📷 上傳診斷書</button>
+          <div class="cert-thumb" id="certThumb_${f.id}"></div>
+        </div>
+      </div>` : '';
+
   return `
     <div class="form-card">
       <div class="fc-title"><span class="form-no">第 ${num} 張</span>${kind}</div>
@@ -379,8 +399,72 @@ function renderFormCard(f, num, Y) {
         <div class="lb">${f.type === 'ot' ? '加班類型' : '事由'}</div>
         <div class="val">${reasonText}</div>
       </div>` : ''}
+      ${certHtml}
     </div>
   `;
+}
+
+// 是否為需檢附診斷書的病假單(單段或多段任一段是病假)
+function isSickForm(f){
+  if(f.type === 'leave') return f.reason === '病假';
+  if(f.type === 'multiLeave' && Array.isArray(f.segments)) return f.segments.some(s => s.reason === '病假');
+  return false;
+}
+
+// 診斷書暫存(formId → 壓縮後的 base64 JPEG)
+const certByFormId = {};
+
+// 選/拍照片 → 縮圖壓縮成 base64 存起來 + 顯示縮圖
+async function onCertPick(input, formId){
+  const file = input.files && input.files[0];
+  if(!file){ return; }
+  try{
+    let dataUrl = await compressImageFile(file, 1400, 0.72);
+    if(dataUrl.length > 850 * 1024) dataUrl = await compressImageFile(file, 1100, 0.6);
+    if(dataUrl.length > 850 * 1024) dataUrl = await compressImageFile(file, 900, 0.5);
+    certByFormId[formId] = dataUrl;
+    const thumb = document.getElementById('certThumb_' + formId);
+    if(thumb){
+      thumb.innerHTML =
+        '<img src="' + dataUrl + '" class="cert-img">' +
+        '<button type="button" class="cert-remove" onclick="removeCert(\'' + formId + '\')">✕ 移除</button>';
+    }
+  }catch(e){
+    alert('讀取照片失敗:' + (e.message || e));
+  }
+  input.value = '';
+}
+
+function removeCert(formId){
+  delete certByFormId[formId];
+  const t = document.getElementById('certThumb_' + formId);
+  if(t) t.innerHTML = '';
+}
+
+// 用 canvas 縮圖壓縮成 JPEG base64(白底,長邊不超過 maxEdge)
+function compressImageFile(file, maxEdge, quality){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        const scale = Math.min(1, maxEdge / Math.max(w, h));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const cx = c.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h);
+        cx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('圖片解析失敗'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('檔案讀取失敗'));
+    reader.readAsDataURL(file);
+  });
 }
 
 /* ===== 橫放簽名頁 ===== */
@@ -411,7 +495,28 @@ function bindDrawArea(){
   drawAreaBound = true;
 }
 
+// 檢查所有病假單是否都已附診斷書;回傳第一張未附的 {f, num},全附好回 null
+function firstMissingCert() {
+  for (let i = 0; i < formsList.length; i++) {
+    const f = formsList[i];
+    if (isSickForm(f) && !certByFormId[f.id]) return { f, num: i + 1 };
+  }
+  return null;
+}
+
+// 病假必填診斷書:未附則提示並捲到該卡片,回傳 true 表示被擋下
+function blockIfCertMissing() {
+  const miss = firstMissingCert();
+  if (!miss) return false;
+  alert('第 ' + miss.num + ' 張是「病假」,必須先上傳診斷書才能簽名送出。\n\n(病假需連同診斷書一起送鋒形;若未附,主管需刪單重新申請。)');
+  const input = document.getElementById('certInput_' + miss.f.id);
+  const card = input && input.closest ? input.closest('.form-card') : null;
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return true;
+}
+
 function openSignFull() {
+  if (blockIfCertMissing()) return;   // 病假未附診斷書 → 不進簽名頁
   const el = document.getElementById('signFull');
   el.classList.add('on');
   document.getElementById('sfInfo').textContent =
@@ -564,6 +669,8 @@ function clearPadFull() {
 
 async function submitBatchSign() {
   if (!hasDrawn) { alert('請先簽名'); return; }
+  // 病假必填診斷書的最後防線(理論上進不到這,openSignFull 已擋)
+  if (blockIfCertMissing()) { closeSignFull(); return; }
   if (!confirm(`確定送出?將蓋到 ${formsList.length} 張假單。送出後無法修改。`)) return;
 
   const btn = document.getElementById('btnConfirmSign');
@@ -575,10 +682,14 @@ async function submitBatchSign() {
     const dataUrl = trimAndCompressSignature(canvasFull);
     const formIds = formsList.map(f => f.id);
 
+    // 收集這批單子有上傳的診斷書(只帶目前清單內的)
+    const certs = {};
+    formsList.forEach(f => { if (certByFormId[f.id]) certs[f.id] = certByFormId[f.id]; });
+
     const url = singleId ? '/api/sign?action=submit' : '/api/sign?action=submitBatch';
     const payload = singleId
-      ? { id: singleId, signature: dataUrl }
-      : { formIds, signature: dataUrl };
+      ? { id: singleId, signature: dataUrl, cert: certByFormId[singleId] || null }
+      : { formIds, signature: dataUrl, certs };
 
     const res = await fetch(url, {
       method: 'POST',
