@@ -9,6 +9,13 @@ import { db } from '../lib/firebase.js';
 const forms = db.collection('forms');
 const bindings = db.collection('bindings');
 
+// 是否為需檢附診斷書的病假(單段或多段任一段)
+function docIsSick(d) {
+  if (d.type === 'leave') return d.reason === '病假';
+  if (d.type === 'multiLeave' && Array.isArray(d.segments)) return d.segments.some(s => s.reason === '病假');
+  return false;
+}
+
 async function findLineUserId(empKey) {
   const snap = await bindings
     .where('empKey', '==', empKey)
@@ -92,12 +99,20 @@ export default async function handler(req, res) {
     // ---------- POST: 批次簽名(一次蓋多張) ----------
     if (req.method === 'POST' && action === 'submitBatch') {
       const body = req.body || {};
-      const { formIds, signature } = body;
+      const { formIds, signature, certs } = body;
       if (!Array.isArray(formIds) || formIds.length === 0 || !signature) {
         return res.status(400).json({ error: '缺少 formIds 或簽名' });
       }
       if (signature.length > 700 * 1024) {
         return res.status(413).json({ error: '簽名檔案過大,請重新簽' });
+      }
+      // 診斷書大小檢查(單張上限 1MB)
+      if (certs && typeof certs === 'object') {
+        for (const k of Object.keys(certs)) {
+          if (certs[k] && certs[k].length > 1024 * 1024) {
+            return res.status(413).json({ error: '診斷書照片過大,請重拍或選較小的圖' });
+          }
+        }
       }
 
       // 檢查每張假單都是 pending 狀態
@@ -106,8 +121,13 @@ export default async function handler(req, res) {
         if (!doc.exists) {
           return res.status(404).json({ error: `找不到假單: ${doc.id}` });
         }
-        if (doc.data().status !== 'pending_employee') {
+        const dd = doc.data();
+        if (dd.status !== 'pending_employee') {
           return res.status(409).json({ error: '有假單已簽名,請重新整理' });
+        }
+        // 病假必填診斷書:未附則擋下(伺服器端保險)
+        if (docIsSick(dd) && !(certs && certs[doc.id])) {
+          return res.status(400).json({ error: '病假必須檢附診斷書才能送出,請先上傳診斷書' });
         }
       }
 
@@ -115,12 +135,14 @@ export default async function handler(req, res) {
       const batch = db.batch();
       const now = new Date();
       formIds.forEach(fid => {
-        batch.update(forms.doc(fid), {
+        const upd = {
           status: 'employee_signed',
           employeeSignatureData: signature,
           employeeSignedAt: now,
           updatedAt: now,
-        });
+        };
+        if (certs && certs[fid]) { upd.medicalCertData = certs[fid]; upd.medicalCertAt = now; }
+        batch.update(forms.doc(fid), upd);
       });
       await batch.commit();
 
@@ -136,12 +158,15 @@ export default async function handler(req, res) {
     // ---------- POST: 單張簽名(相容舊版) ----------
     if (req.method === 'POST' && action === 'submit') {
       const body = req.body || {};
-      const { id: formId, signature } = body;
+      const { id: formId, signature, cert } = body;
       if (!formId || !signature) {
         return res.status(400).json({ error: '缺少 id 或簽名' });
       }
       if (signature.length > 700 * 1024) {
         return res.status(413).json({ error: '簽名檔案過大,請重新簽' });
+      }
+      if (cert && cert.length > 1024 * 1024) {
+        return res.status(413).json({ error: '診斷書照片過大,請重拍或選較小的圖' });
       }
 
       const doc = await forms.doc(formId).get();
@@ -150,13 +175,19 @@ export default async function handler(req, res) {
       if (d.status !== 'pending_employee') {
         return res.status(409).json({ error: '此假單已簽名或狀態異常' });
       }
+      // 病假必填診斷書(伺服器端保險)
+      if (docIsSick(d) && !cert) {
+        return res.status(400).json({ error: '病假必須檢附診斷書才能送出,請先上傳診斷書' });
+      }
 
-      await forms.doc(formId).update({
+      const upd = {
         status: 'employee_signed',
         employeeSignatureData: signature,
         employeeSignedAt: new Date(),
         updatedAt: new Date(),
-      });
+      };
+      if (cert) { upd.medicalCertData = cert; upd.medicalCertAt = new Date(); }
+      await forms.doc(formId).update(upd);
 
       // (主管通知改為「每月定時排程 + 後台手動推」,不在員工簽名當下推,避免洗版)
 
