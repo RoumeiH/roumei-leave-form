@@ -283,6 +283,12 @@
     return { name: f.fullName || r.full || f.empKey || '(未知)', dept: f.dept || r.dept || '-' };
   }
   function typeLabel(f){ return TYPE_LABEL[f.type] || f.type || '假單'; }
+  // 是否病假(單段或多段任一段)→ 決定按鈕要不要標「診斷書」
+  function isSickLeave(f){
+    if(f.type==='leave') return f.reason==='病假';
+    if(f.type==='multiLeave' && Array.isArray(f.segments)) return f.segments.some(s=>s.reason==='病假');
+    return false;
+  }
   function dateStr(f){
     if(f.type==='multiLeave' && Array.isArray(f.segments) && f.segments.length){
       return f.segments.map(s=>{
@@ -416,7 +422,7 @@
       }else if(cat==='pushed'){
         op = `<button class="btn btn-repush" onclick="doRepush('${esc(f.empKey)}','${esc(name)}')">重新推送</button>`;
       }else if(cat==='signed'){
-        op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">看簽名</button>`;
+        op = `<button class="btn btn-view" onclick="viewSign('${f.id}','${esc(name)}')">${isSickLeave(f)?'看簽名／診斷書':'看簽名'}</button>`;
       }else if(cat==='completed'){
         op = `<button class="btn btn-view" onclick="window.open('/?viewForm=${f.id}','_blank')">看假單</button>`;
       }else if(cat==='rejected'){
