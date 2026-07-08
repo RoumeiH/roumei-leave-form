@@ -1218,11 +1218,11 @@ function renderExistingPreview(){
     <div class="queue-box no-print" style="margin-top:22px">
       <div class="queue-hd">已加入列印清單（${PRINT_LIST.length} 張）</div>
       ${PRINT_LIST.map((it,i)=>`
-        <div class="qitem">
+        <div class="qitem${rowPushedClass(it)}">
           <span class="qno">${i+1}</span>
-          <span class="qlabel">${it.label}</span>
+          <span class="qlabel">${rowLabelHtml(it)}</span>
           <span class="qacts">
-            <button onclick="pushPrintItemToLine(${i})" class="line" title="推 LINE 給員工簽名">📱</button>
+            ${rowPushBtnHtml(i,it)}
             <button onclick="removeItem(${i});renderDrafts()" class="del">✕</button>
           </span>
         </div>`).join('')}
@@ -1496,19 +1496,25 @@ async function pushPrintItemToLine(idx){
   }
   const d = it.draft;
   const name = fullName(d.empKey);
-  if(!confirm(`確定推播「${name}」的假單到 LINE?\n對方會收到 LINE 訊息,點連結進去簽名。\n\n(若該員工另有其他待簽假單,會一起提醒)`)) return;
+  // 同一員工在列印清單中的所有張:一起建立、一起推、一起標記(避免要按好幾次)
+  const sameItems = PRINT_LIST.filter(x => x.draft && x.draft.empKey === d.empKey);
+  const nDrafts = sameItems.length;
+  const verb = it._pushedAt ? '再推一次' : '推播';
+  if(!confirm(`確定${verb}「${name}」的假單到 LINE?\n該員工列印清單目前有 ${nDrafts} 張,會一起建立並在同一則訊息提醒。\n對方點連結即可簽名。`)) return;
 
   try{
-    // 1. 先建立假單(存資料庫,不推播)
-    const res1 = await fetch('/api/forms?action=create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(draftToFormPayload(d)),
-    });
-    const data1 = await res1.json();
-    if(!res1.ok) throw new Error(data1.error || '建立失敗');
+    // 1. 把該員工在列印清單中的每一張都先建立(已建過的伺服器端會自動略過)
+    for(const x of sameItems){
+      const r1 = await fetch('/api/forms?action=create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draftToFormPayload(x.draft)),
+      });
+      const j1 = await r1.json();
+      if(!r1.ok) throw new Error(j1.error || '建立失敗');
+    }
 
-    // 2. 推播該員工所有未簽的
+    // 2. 推播該員工所有未簽的(合成一則,含全部)
     const res2 = await fetch('/api/forms?action=push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1517,8 +1523,16 @@ async function pushPrintItemToLine(idx){
     const data2 = await res2.json();
     if(!res2.ok) throw new Error(data2.error || '推播失敗');
 
-    // 保留在列印清單(仍可列印紙本);僅提示已推播
-    alert(`✅ 已推播給 ${name}(共 ${data2.count} 張)\n\n(這張仍留在列印清單,若不需要紙本可自行 ✕ 移除)`);
+    // 3. 標記同員工所有列為已推播(變灰 + 時間 + 按鈕改「再推一次」);並存雲端讓重整後也記得
+    const nowHHMM = new Date().toTimeString().slice(0,5);
+    sameItems.forEach(x => {
+      x._pushedAt = nowHHMM;
+      if(typeof syncUpdateDraft === 'function' && x._cloudId) syncUpdateDraft(x._cloudId, { pushedAt: nowHHMM });
+    });
+    renderStage();
+    if(typeof renderDrafts === 'function' && typeof BATCH_DRAFTS !== 'undefined' && BATCH_DRAFTS.length) renderDrafts();
+
+    alert(`✅ 已推播給 ${name}(共 ${data2.count} 張)\n\n這 ${nDrafts} 張已標記「已推播」,同一員工不用再按第二次。\n(仍留在列印清單,若不需要紙本可自行 ✕ 移除)`);
   }catch(err){
     alert(`❌ 推播失敗: ${err.message}`);
   }
@@ -2006,6 +2020,15 @@ function generate(){
   }
 }
 
+// 列印清單一列的「已推播」外觀輔助(同一員工推播後整組標記)
+function rowPushedClass(it){ return it && it._pushedAt ? ' pushed' : ''; }
+function rowLabelHtml(it){ return it.label + (it && it._pushedAt ? `<span class="pushed-tag">✅ 已推播 ${it._pushedAt}</span>` : ''); }
+function rowPushBtnHtml(i, it){
+  return it && it._pushedAt
+    ? `<button onclick="pushPrintItemToLine(${i})" class="line repushed" title="再推一次">🔁</button>`
+    : `<button onclick="pushPrintItemToLine(${i})" class="line" title="推 LINE 給員工簽名">📱</button>`;
+}
+
 // 渲染右側：上方清單管理 + 下方 A4 分頁預覽
 function renderStage(){
   const head = document.getElementById('stageHead');
@@ -2026,13 +2049,13 @@ function renderStage(){
 
   // 清單管理列（不會被列印）
   const listRows = PRINT_LIST.map((it,i)=>`
-    <div class="qitem">
+    <div class="qitem${rowPushedClass(it)}">
       <span class="qno">${i+1}</span>
-      <span class="qlabel">${it.label}</span>
+      <span class="qlabel">${rowLabelHtml(it)}</span>
       <span class="qacts">
         <button onclick="moveItem(${i},-1)" ${i===0?'disabled':''} title="上移">↑</button>
         <button onclick="moveItem(${i},1)" ${i===PRINT_LIST.length-1?'disabled':''} title="下移">↓</button>
-        <button onclick="pushPrintItemToLine(${i})" class="line" title="推 LINE 給員工簽名">📱</button>
+        ${rowPushBtnHtml(i,it)}
         <button onclick="removeItem(${i})" class="del" title="刪除">✕</button>
       </span>
     </div>`).join('');
@@ -2550,7 +2573,8 @@ async function bootstrapCloud(){
           _cloudId: d.id,
           label: d.label,
           draft: draftObj,
-          html: renderDraftAsForm(draftObj)
+          html: renderDraftAsForm(draftObj),
+          _pushedAt: d.pushedAt || null   // 已推播標記(重整後也記得)
         };
       });
 
