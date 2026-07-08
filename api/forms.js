@@ -265,6 +265,37 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, ...result });
       }
 
+      if (action === 'femasSync') {
+        // 本機「鋒形自動上傳面板」把每張已完成假單的鋒形上傳狀態上拋,存回 forms 文件,
+        // 讓雲端追蹤後台能直接對照(免另開本機面板)。
+        // body.items = [{ docId, status:'done'|'partial'|'none'|'na', at:ISO|null, parts:'x/y'|null }]
+        const need = process.env.FEMAS_SYNC_TOKEN;
+        if (need && (req.headers['x-femas-token'] || '') !== need) {
+          return res.status(401).json({ error: 'femas token 不符' });
+        }
+        const items = Array.isArray(body.items) ? body.items : [];
+        const nowIso = new Date().toISOString();
+        let updated = 0;
+        const results = [];
+        for (const it of items) {
+          if (!it || !it.docId) continue;
+          try {
+            await forms.doc(it.docId).update({
+              femasUploadStatus: it.status || 'none',
+              femasUploadedAt: it.at || null,
+              femasUploadParts: it.parts || null,
+              femasSyncedAt: nowIso,
+            });
+            updated++;
+            results.push({ docId: it.docId, ok: true });
+          } catch (e) {
+            // 文件可能已被刪除 → 略過該筆,不影響其他
+            results.push({ docId: it.docId, ok: false, error: e.message });
+          }
+        }
+        return res.status(200).json({ ok: true, updated, total: items.length, results });
+      }
+
       if (action === 'notifySupervisors') {
         // 推播所有已確認主管:目前有幾張待主管簽核(員工已簽)
         const supSnap = await bindings
