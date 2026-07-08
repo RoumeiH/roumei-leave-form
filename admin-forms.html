@@ -99,6 +99,13 @@
   .f-sub{font-size:11px;color:var(--ink-soft);margin-top:2px}
   .push-time{color:var(--ink-soft);font-size:12px;white-space:nowrap}
   td.opcell{text-align:right;white-space:nowrap}
+  td.femas-cell{white-space:nowrap;font-size:12px;font-weight:700}
+  .femas-cell .fx-done{color:#0a8f4d}
+  .femas-cell .fx-when{color:var(--ink-soft);font-weight:400;margin-left:6px}
+  .femas-cell .fx-part{color:#c8890f}
+  .femas-cell .fx-no{color:#c0392b}
+  .femas-cell .fx-na{color:var(--ink-soft);font-weight:400}
+  .femas-cell .fx-dash{color:var(--line);font-weight:400}
 
   .badge{
     display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;
@@ -318,6 +325,19 @@
     return allForms.filter(f=>f.empKey===empKey && f.status==='pending_employee').length;
   }
   function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // 鋒形上傳狀態(本機上傳面板同步上來的);只有「完成」的假單才有意義
+  function femasCell(f){
+    if(classify(f)!=='completed') return '<span class="fx-dash">—</span>';
+    const st = f.femasUploadStatus;
+    if(st==='done'){
+      const d = f.femasUploadedAt ? fmtTime(f.femasUploadedAt) : '';
+      return `<span class="fx-done">✓ 已上傳</span>${d?`<span class="fx-when">${esc(d)}</span>`:''}`;
+    }
+    if(st==='partial') return `<span class="fx-part">◑ 部分 ${esc(f.femasUploadParts||'')}</span>`;
+    if(st==='na')      return `<span class="fx-na">不適用</span>`;
+    if(st==='none')    return `<span class="fx-no">○ 未上傳</span>`;
+    return `<span class="fx-dash" title="本機上傳面板尚未同步(需開著面板才會回報)">—</span>`;
+  }
 
   /* ---------- 載入 ---------- */
   async function loadAll(manual){
@@ -435,6 +455,7 @@
         <td><span class="emp-name">${esc(name)}</span><span class="emp-dept">·${esc(dept)}</span></td>
         <td><span class="f-kind">${esc(typeLabel(f))}</span><span class="f-date">${esc(dateStr(f))}</span>${sub}</td>
         <td><span class="badge ${meta.cls}">${meta.label}</span></td>
+        <td class="femas-cell">${femasCell(f)}</td>
         <td class="push-time">${fmtTime(f.lastPushAt)}</td>
         <td class="opcell">${op}</td>
       </tr>`;
@@ -442,7 +463,7 @@
 
     area.innerHTML = `<div class="tbl-scroll"><table class="forms">
       <thead><tr>
-        <th>員工</th><th>類型 · 日期</th><th>狀態</th><th>最後推播</th><th class="right">操作</th>
+        <th>員工</th><th>類型 · 日期</th><th>狀態</th><th>鋒形</th><th>最後推播</th><th class="right">操作</th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table></div>`;
