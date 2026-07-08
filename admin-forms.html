@@ -517,7 +517,14 @@
                  <img src="${f.supervisorSignatureData}" alt="主管簽名">`;
         if(supWhen) html += `<div class="meta">簽核時間 ${supWhen.toLocaleString('zh-TW',{hour12:false})}</div>`;
       }
-      if(!f.employeeSignatureData && !f.supervisorSignatureData){
+      // 診斷書(病假才有;點圖可開新分頁看大圖／下載)
+      if(f.medicalCertData){
+        const certWhen = toDate(f.medicalCertAt);
+        html += `<div style="font-size:12px;color:#b45309;font-weight:700;margin:14px 0 4px">診斷書</div>
+                 <a href="${f.medicalCertData}" target="_blank" rel="noopener" title="點擊看大圖／下載"><img src="${f.medicalCertData}" alt="診斷書" style="cursor:zoom-in"></a>`;
+        if(certWhen) html += `<div class="meta">上傳時間 ${certWhen.toLocaleString('zh-TW',{hour12:false})}</div>`;
+      }
+      if(!f.employeeSignatureData && !f.supervisorSignatureData && !f.medicalCertData){
         html = '<div style="color:#c53030;font-size:13px">找不到簽名資料</div>';
       }
       document.getElementById('modalBody').innerHTML = html;
