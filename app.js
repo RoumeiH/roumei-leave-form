@@ -1006,8 +1006,8 @@ function draftCoveredDayKeys(d){
 
 // 已存在的假單中,哪些狀態視為「該日已被佔用」→ 掃描時不該再產生重複草稿。
 // 已送出待簽(pending_employee)、員工已簽(employee_signed)、已完成(completed)、
-// 已歸檔(archived)都算;退回(rejected)不算(可重新產生)。
-const OCCUPIED_STATUS = new Set(['pending_employee', 'employee_signed', 'completed', 'archived']);
+// 已歸檔(archived)、以及「存成草稿還沒送出(draft)」都算;退回(rejected)不算(可重新產生)。
+const OCCUPIED_STATUS = new Set(['pending_employee', 'employee_signed', 'completed', 'archived', 'draft']);
 
 // 掃描結果過濾:已被佔用的日期不再出現。整張都被佔用→隱藏整張;
 // 合寫多段只有部分段被佔用→只砍掉那幾段、保留還沒送的段(剩一段就還原成單張)。
@@ -1028,6 +1028,15 @@ async function filterOutSignedDrafts(drafts){
         enumFormDayKeys(signedDays, f.empKey, f.type, f.mon, f.day, f.endMon, f.endDay);
       }
     }
+
+    // 已加進「列印清單」但還沒送出的單,也算已佔用 → 不再重覆產生草稿
+    if(Array.isArray(PRINT_LIST)){
+      for(const it of PRINT_LIST){
+        if(!it || !it.draft) continue;
+        draftCoveredDayKeys(it.draft).forEach(k => signedDays.add(k));
+      }
+    }
+
     if(signedDays.size === 0) return drafts;
 
     // 某一段(合寫的一段)的所有覆蓋日都已佔用 → 這段視為已處理
