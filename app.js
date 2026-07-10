@@ -1004,7 +1004,13 @@ function draftCoveredDayKeys(d){
   return [...set];
 }
 
-// 掃描結果過濾:凡是「所有覆蓋日都已被已簽/已完成表單蓋掉」的草稿就隱藏
+// 已存在的假單中,哪些狀態視為「該日已被佔用」→ 掃描時不該再產生重複草稿。
+// 已送出待簽(pending_employee)、員工已簽(employee_signed)、已完成(completed)、
+// 已歸檔(archived)都算;退回(rejected)不算(可重新產生)。
+const OCCUPIED_STATUS = new Set(['pending_employee', 'employee_signed', 'completed', 'archived']);
+
+// 掃描結果過濾:已被佔用的日期不再出現。整張都被佔用→隱藏整張;
+// 合寫多段只有部分段被佔用→只砍掉那幾段、保留還沒送的段(剩一段就還原成單張)。
 async function filterOutSignedDrafts(drafts){
   try{
     const res = await fetch('/api/forms');
@@ -1012,10 +1018,10 @@ async function filterOutSignedDrafts(drafts){
     const data = await res.json();
     const forms = data.forms || [];
 
-    // 收集已簽/已完成表單覆蓋的所有 day key
+    // 收集「已被佔用」表單覆蓋的所有 day key
     const signedDays = new Set();
     for(const f of forms){
-      if(f.status !== 'employee_signed' && f.status !== 'completed') continue;
+      if(!OCCUPIED_STATUS.has(f.status)) continue;
       if(f.type === 'multiLeave' && Array.isArray(f.segments)){
         f.segments.forEach(s => enumFormDayKeys(signedDays, f.empKey, 'multiLeave', s.startMon, s.startDay, s.endMon, s.endDay));
       }else{
@@ -1024,12 +1030,36 @@ async function filterOutSignedDrafts(drafts){
     }
     if(signedDays.size === 0) return drafts;
 
-    // 某張草稿的所有覆蓋日都已簽 → 丟掉
-    return drafts.filter(d => {
-      const keys = draftCoveredDayKeys(d);
-      if(keys.length === 0) return true;
-      return !keys.every(k => signedDays.has(k));
-    });
+    // 某一段(合寫的一段)的所有覆蓋日都已佔用 → 這段視為已處理
+    const segOccupied = (empKey, s) => {
+      const set = new Set();
+      enumFormDayKeys(set, empKey, 'multiLeave', s.startMon, s.startDay, s.endMon, s.endDay);
+      const keys = [...set];
+      return keys.length > 0 && keys.every(k => signedDays.has(k));
+    };
+
+    const out = [];
+    for(const d of drafts){
+      if(d.type === 'multiLeave' && Array.isArray(d.segments)){
+        const kept = d.segments.filter(s => !segOccupied(d.empKey, s));
+        if(kept.length === 0) continue;                                 // 每段都已處理 → 整張隱藏
+        if(kept.length === d.segments.length){ out.push(d); continue; } // 沒有已處理的段 → 原樣保留
+        if(kept.length === 1){
+          out.push(segmentToDraft(d.empKey, kept[0]));                  // 只剩一段 → 還原成單張請假單
+        }else{
+          d.segments = kept;                                            // 砍掉已處理的段
+          d.mon = kept[0].startMon; d.day = kept[0].startDay;
+          d.dayKey = `${kept[0].startMon}/${kept[0].startDay}`;
+          d.sourceCode = kept.length + ' 筆假';
+          out.push(d);
+        }
+      }else{
+        const keys = draftCoveredDayKeys(d);
+        if(keys.length && keys.every(k => signedDays.has(k))) continue; // 整張已處理 → 隱藏
+        out.push(d);
+      }
+    }
+    return out;
   }catch(err){
     console.error('[filterOutSignedDrafts] 比對失敗,不過濾:', err);
     return drafts;   // 出錯就照舊全顯示,不擋掉正常流程
@@ -1043,7 +1073,7 @@ function renderDrafts(){
   document.getElementById('stageTitle').innerHTML =
     `批次草稿 <span>共 ${BATCH_DRAFTS.length} 張（可修改／刪除，確認後加入列印清單）</span>` +
     (HIDDEN_SIGNED_COUNT > 0
-      ? ` <span style="color:var(--ok);font-weight:700">· 已隱藏 ${HIDDEN_SIGNED_COUNT} 張已簽署</span>`
+      ? ` <span style="color:var(--ok);font-weight:700">· 已隱藏 ${HIDDEN_SIGNED_COUNT} 張已送出／簽署</span>`
       : '');
 
   if(BATCH_DRAFTS.length===0){
@@ -1290,31 +1320,34 @@ function clearDrafts(){
   }
 }
 
+// 把一段(合寫的其中一段)還原成一筆單獨的請假草稿
+function segmentToDraft(empKey, s){
+  const isRange = !(s.startMon===s.endMon && s.startDay===s.endDay);
+  return {
+    empKey,
+    dayKey: `${s.startMon}/${s.startDay}`,
+    mon: s.startMon,
+    day: s.startDay,
+    type: 'leave',
+    reason: s.reason || '特休假',
+    shift: s.shift,
+    sourceCode: isRange ? `年 × ${daysBetween(s.startMon, s.startDay, s.endMon, s.endDay)}日` : '年',
+    // 若為多天保留 endDay
+    ...(isRange ? {
+      endMon: s.endMon,
+      endDay: s.endDay,
+      endDayKey: `${s.endMon}/${s.endDay}`,
+      mergedCount: daysBetween(s.startMon, s.startDay, s.endMon, s.endDay)
+    } : {})
+  };
+}
+
 // 把一筆四段式草稿拆回多筆單獨草稿(每段變成一筆)
 function splitMultiDraft(idx){
   const d = BATCH_DRAFTS[idx];
   if(!d || d.type !== 'multiLeave') return;
   // 每段展開為一筆單獨的請假草稿
-  const expanded = d.segments.map(s => {
-    const isRange = !(s.startMon===s.endMon && s.startDay===s.endDay);
-    return {
-      empKey: d.empKey,
-      dayKey: `${s.startMon}/${s.startDay}`,
-      mon: s.startMon,
-      day: s.startDay,
-      type: 'leave',
-      reason: s.reason || '特休假',
-      shift: s.shift,
-      sourceCode: isRange ? `年 × ${daysBetween(s.startMon, s.startDay, s.endMon, s.endDay)}日` : '年',
-      // 若為多天保留 endDay
-      ...(isRange ? {
-        endMon: s.endMon,
-        endDay: s.endDay,
-        endDayKey: `${s.endMon}/${s.endDay}`,
-        mergedCount: daysBetween(s.startMon, s.startDay, s.endMon, s.endDay)
-      } : {})
-    };
-  });
+  const expanded = d.segments.map(s => segmentToDraft(d.empKey, s));
   const cloudId = d._cloudId;
   BATCH_DRAFTS.splice(idx, 1, ...expanded);
   // 重新排序
