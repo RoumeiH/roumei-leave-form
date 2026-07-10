@@ -969,11 +969,15 @@ async function runBatchScan(){
   const filtered = await filterOutSignedDrafts(drafts);
   HIDDEN_SIGNED_COUNT = before - filtered.length;
 
+  // 先記住「上一批」的雲端 id;等一下覆蓋 BATCH_DRAFTS 後,新草稿沒有 _cloudId,
+  // 就無法從中回推要刪哪些舊的,舊的殘留在雲端就會累積成重覆。
+  const prevBatchCloudIds = BATCH_DRAFTS.map(d => d._cloudId).filter(Boolean);
+
   BATCH_DRAFTS = filtered;
   renderDrafts();
-  // 同步到雲端(其他裝置立刻看到)
+  // 同步到雲端(其他裝置立刻看到);把上一批的雲端草稿刪掉,避免重覆累積
   if(typeof syncBatchDraftsToCloud === 'function'){
-    syncBatchDraftsToCloud();
+    syncBatchDraftsToCloud(prevBatchCloudIds);
   }
 }
 
@@ -2638,12 +2642,15 @@ async function bootstrapCloud(){
 /* ---------- 同步輔助函式 ---------- */
 
 // 將本機的批次草稿全部寫進雲端(掃描完成時呼叫)
-async function syncBatchDraftsToCloud(){
+async function syncBatchDraftsToCloud(deleteIds){
   if(!SYNC_ENABLED || SYNCING) return;
   try{
     // 為避免混亂,掃描時先清空雲端現有 batch,再全部重加
     // (簡化做法,以後可改為 diff)
-    const oldBatchIds = BATCH_DRAFTS.map(d => d._cloudId).filter(Boolean);
+    // 優先刪呼叫端傳入的「上一批」id;沒傳才退回用目前這批的 id。
+    const oldBatchIds = Array.isArray(deleteIds)
+      ? deleteIds
+      : BATCH_DRAFTS.map(d => d._cloudId).filter(Boolean);
     for(const id of oldBatchIds){
       await Cloud.deleteDraft(id).catch(()=>{});
     }
