@@ -1494,6 +1494,8 @@ function draftToFormPayload(d){
     agent: d.agent || null,
     note: d.note || null,
     otherReason: d.otherReason || null,
+    missKind: d.missKind || null,
+    missTime: d.missTime || null,
     sourceCode: d.sourceCode || '',
     rocYear: rocY(),
   };
@@ -1781,12 +1783,15 @@ function renderDraftAsForm(d){
     document.body.appendChild(tmp);
     html = buildWrong();
   }else if(d.type === 'miss'){
-    // 未刷卡:走原本 buildMiss(帶預設值,不能保證完整還原,但列印可用)
+    // 未刷卡:讀真實 missKind/missTime;舊單沒存則退回「上班 + 班別上班時間」
+    const mk = d.missKind || '上班';
+    const mt = d.missTime || (mk === '下班' ? (d.shift && d.shift.end) : (d.shift && d.shift.start)) || '';
+    const [mHh, mMm] = String(mt).split(':');
     tmp.innerHTML = `
       <input id="f_title" value="${deptOf(d.empKey)}">
-      <input type="radio" name="misskind" value="上班" checked>
-      <input id="f_mh" value="${+sH || ''}"><input id="f_mm" value="${+sM || ''}">
-      <select id="f_reason"><option selected>忘記打卡(漏打卡)</option></select>
+      <input type="radio" name="misskind" value="${mk}" checked>
+      <input id="f_mh" value="${mHh ? +mHh : (+sH || '')}"><input id="f_mm" value="${(mMm != null && mMm !== '') ? +mMm : (+sM || '')}">
+      <select id="f_reason"><option selected>${attrEsc(d.reason || '忘記打卡(漏打卡)')}</option></select>
     `;
     document.body.appendChild(tmp);
     html = buildMiss();
@@ -2054,6 +2059,11 @@ function generate(){
     agent: val('f_agent') || null,
     note: val('f_note') || null,
     otherReason: val('f_otherReason') || null,
+    // 未刷卡:記下「上班/下班/空班」與實際漏刷的時間,供鋒形申覆事由用
+    missKind: type === 'miss' ? (document.querySelector('input[name="misskind"]:checked')?.value || '上班') : null,
+    missTime: type === 'miss' && val('f_mh') !== '' && val('f_mm') !== ''
+      ? String(val('f_mh')).padStart(2, '0') + ':' + String(val('f_mm')).padStart(2, '0')
+      : null,
     endDay: val('f_endDay') || null,
   };
 
@@ -2608,6 +2618,7 @@ async function bootstrapCloud(){
           type: d.type, reason: d.reason, comp: d.comp, shift: d.shift,
           sourceCode: d.sourceCode,
           agent: d.agent, note: d.note, otherReason: d.otherReason,
+          missKind: d.missKind, missTime: d.missTime,
           // 多段與連續合併必要欄位
           segments: d.segments,
           endMon: d.endMon,
@@ -2709,6 +2720,8 @@ async function syncAddToPrintList(draft, label){
       agent: draft.agent || null,
       note: draft.note || null,
       otherReason: draft.otherReason || null,
+      missKind: draft.missKind || null,
+      missTime: draft.missTime || null,
       shift: draft.shift || null,
       sourceCode: draft.sourceCode || '',
       // 多段合寫必要欄位(不存的話載回來會空)
