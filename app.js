@@ -67,6 +67,9 @@ function isOff(code){
   if(c==='') return true;
   // 含「數字-數字」或「數字/數字」或換行兩段數字 → 是上班時間
   if(/\d{1,2}\s*[-\/\r\n]\s*\d{1,2}/.test(c)) return false;
+  // 地點名稱+3~4碼時間、無分隔符（例：峻美1030、0830）→ 也是上班時間
+  const m = c.match(/\d{3,4}$/);
+  if(m && toHM(m[0])) return false;
   return true;   // 其餘（休/例/國/年/套/三套/龍/寧夏/柔/xx/取消…）皆視為非上班
 }
 
@@ -78,14 +81,26 @@ function parseShift(code){
   s = s.replace(/^(卡|國加|休加|加)\s*/,'').trim();      // 去前綴註記 卡/國加/休加
   if(isOff(s)) return null;
   // 統一各種分隔符（含換行、空白、全形）為「-」
-  s = s.replace(/[／]/g,'/').replace(/[–—~～]/g,'-')
+  let norm = s.replace(/[／]/g,'/').replace(/[–—~～]/g,'-')
        .replace(/[\r\n\t ]+/g,'-');
-  let parts = s.split(/[\/\-]+/).filter(Boolean);
-  if(parts.length < 2) return null;
-  const a = toHM(parts[0]);
-  const b = toHM(parts[1]);
-  if(!a || !b) return null;
-  return {start:a, end:b};
+  let parts = norm.split(/[\/\-]+/).filter(Boolean);
+  if(parts.length >= 2){
+    const a = toHM(parts[0]);
+    const b = toHM(parts[1]);
+    if(a && b) return {start:a, end:b};
+  }
+  // 地點名稱+3~4碼時間、無分隔符（例：峻美1030）→ 上班時間，固定做滿 9 小時
+  const m = s.match(/\d{3,4}$/);
+  if(m){
+    const start = toHM(m[0]);
+    if(start){
+      const [h,mi] = start.split(':').map(Number);
+      const endMin = (h*60+mi+9*60) % 1440;
+      const end = String(Math.floor(endMin/60)).padStart(2,'0')+':'+String(endMin%60).padStart(2,'0');
+      return {start, end};
+    }
+  }
+  return null;
 }
 
 // 把 "08"→08:00, "1030"→10:30, "8"→08:00, "0930"→09:30, "17"→17:00
