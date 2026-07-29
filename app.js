@@ -1769,7 +1769,7 @@ function renderDraftAsForm(d){
       <input id="f_days" value="${days||''}"><input id="f_hrs" value="${hrs||''}"><input id="f_mins" value="${mins||''}">
       <input id="f_agent" value="${attrEsc(d.agent)}"><input id="f_note" value="${attrEsc(d.note)}">
     `;
-    document.body.appendChild(tmp);
+    document.body.insertBefore(tmp, document.body.firstChild);
     html = buildLeave();
   }else if(d.type === 'wrong'){
     // 休假誤刷證明:只有一個時間點
@@ -1780,7 +1780,7 @@ function renderDraftAsForm(d){
       <input id="f_wrongDay" value="${d.day || ''}">
       <input id="f_wh" value="${wH || ''}"><input id="f_wm" value="${wM || ''}">
     `;
-    document.body.appendChild(tmp);
+    document.body.insertBefore(tmp, document.body.firstChild);
     html = buildWrong();
   }else if(d.type === 'miss'){
     // 未刷卡:讀真實 missKind/missTime;舊單沒存則退回「上班 + 班別上班時間」
@@ -1793,7 +1793,7 @@ function renderDraftAsForm(d){
       <input id="f_mh" value="${mHh ? +mHh : (+sH || '')}"><input id="f_mm" value="${(mMm != null && mMm !== '') ? +mMm : (+sM || '')}">
       <select id="f_reason"><option selected>${attrEsc(d.reason || '忘記打卡(漏打卡)')}</option></select>
     `;
-    document.body.appendChild(tmp);
+    document.body.insertBefore(tmp, document.body.firstChild);
     html = buildMiss();
   }else{
     tmp.innerHTML = `
@@ -1805,7 +1805,7 @@ function renderDraftAsForm(d){
       <select id="f_comp"><option selected>${d.comp||'補休'}</option></select>
       <input id="f_note" value="${attrEsc(d.note)}">
     `;
-    document.body.appendChild(tmp);
+    document.body.insertBefore(tmp, document.body.firstChild);
     html = buildOT();
   }
   tmp.remove();
