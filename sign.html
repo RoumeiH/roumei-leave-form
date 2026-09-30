@@ -352,8 +352,13 @@ function renderFormCard(f, num, Y) {
     const dateStr = isRange
       ? `${Y}/${f.mon}/${f.day} – ${endMon}/${endDay}`
       : `${Y}/${f.mon}/${f.day}`;
-    const sh = f.shift;
-    const timeStr = sh ? `${sh.start} – ${sh.end}` : '—';
+    // 加班單:優先顯示「實際填的」加班起訖(otStart/otEnd);沒有才退回班表時間
+    let timeStr = '—';
+    if (f.type === 'ot' && f.otStart && f.otEnd) {
+      timeStr = `${f.otStart} – ${f.otEnd}`;
+    } else if (f.shift) {
+      timeStr = `${f.shift.start} – ${f.shift.end}`;
+    }
     dateHtml = `
       <div class="row">
         <div class="lb">日期</div>

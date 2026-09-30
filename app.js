@@ -1511,6 +1511,11 @@ function draftToFormPayload(d){
     otherReason: d.otherReason || null,
     missKind: d.missKind || null,
     missTime: d.missTime || null,
+    // 加班單:實際填的加班起訖與共計(員工簽名卡與成品假單都靠這個)
+    otStart: d.otStart || null,
+    otEnd: d.otEnd || null,
+    otHours: d.otHours || null,
+    otMinutes: d.otMinutes || null,
     sourceCode: d.sourceCode || '',
     rocYear: rocY(),
   };
@@ -1811,11 +1816,16 @@ function renderDraftAsForm(d){
     document.body.insertBefore(tmp, document.body.firstChild);
     html = buildMiss();
   }else{
+    // 加班單:優先用「實際填的」加班起訖 otStart/otEnd;沒有(舊資料或批次自動產的單)
+    // 才退回 shift(班表時間)。共計同理用 otHours/otMinutes。
+    const otS = (d.otStart || sh.start || '').split(':');
+    const otE = (d.otEnd   || sh.end   || '').split(':');
+    const num = v => (v != null && v !== '') ? +v : '';
     tmp.innerHTML = `
       <input id="f_title" value="${deptOf(d.empKey)}">
-      <input id="f_sh" value="${+sH}"><input id="f_sm" value="${+sM}">
-      <input id="f_eh" value="${+eH}"><input id="f_em" value="${+eM}">
-      <input id="f_oth" value=""><input id="f_otm" value="">
+      <input id="f_sh" value="${num(otS[0])}"><input id="f_sm" value="${num(otS[1])}">
+      <input id="f_eh" value="${num(otE[0])}"><input id="f_em" value="${num(otE[1])}">
+      <input id="f_oth" value="${d.otHours != null ? d.otHours : ''}"><input id="f_otm" value="${d.otMinutes != null ? d.otMinutes : ''}">
       <input id="f_reason" value="${attrEsc(d.reason||'人力需求')}">
       <select id="f_comp"><option selected>${d.comp||'補休'}</option></select>
       <input id="f_note" value="${attrEsc(d.note)}">
@@ -2079,6 +2089,16 @@ function generate(){
     missTime: type === 'miss' && val('f_mh') !== '' && val('f_mm') !== ''
       ? String(val('f_mh')).padStart(2, '0') + ':' + String(val('f_mm')).padStart(2, '0')
       : null,
+    // 加班單:記下「實際填的」加班起訖與共計。不能靠 shift——shift 存的是這位員工
+    // 「平常的班表時間」,不是加班時段;不另存會在雲端同步回來時被班表時間蓋掉。
+    otStart: type === 'ot' && val('f_sh') !== ''
+      ? String(val('f_sh')).padStart(2, '0') + ':' + String(val('f_sm') || 0).padStart(2, '0')
+      : null,
+    otEnd: type === 'ot' && val('f_eh') !== ''
+      ? String(val('f_eh')).padStart(2, '0') + ':' + String(val('f_em') || 0).padStart(2, '0')
+      : null,
+    otHours:   type === 'ot' ? (val('f_oth') || null) : null,
+    otMinutes: type === 'ot' ? (val('f_otm') || null) : null,
     endDay: val('f_endDay') || null,
   };
 
@@ -2634,6 +2654,8 @@ async function bootstrapCloud(){
           sourceCode: d.sourceCode,
           agent: d.agent, note: d.note, otherReason: d.otherReason,
           missKind: d.missKind, missTime: d.missTime,
+          // 加班單:實際填的加班起訖與共計
+          otStart: d.otStart, otEnd: d.otEnd, otHours: d.otHours, otMinutes: d.otMinutes,
           // 多段與連續合併必要欄位
           segments: d.segments,
           endMon: d.endMon,
@@ -2738,6 +2760,11 @@ async function syncAddToPrintList(draft, label){
       missKind: draft.missKind || null,
       missTime: draft.missTime || null,
       shift: draft.shift || null,
+      // 加班單:實際填的加班起訖與共計(不存的話載回來會被班表時間蓋掉)
+      otStart: draft.otStart || null,
+      otEnd: draft.otEnd || null,
+      otHours: draft.otHours || null,
+      otMinutes: draft.otMinutes || null,
       sourceCode: draft.sourceCode || '',
       // 多段合寫必要欄位(不存的話載回來會空)
       segments: draft.segments || null,
@@ -2906,6 +2933,8 @@ async function renderCompletedFormView(id){
     reason: f.reason, comp: f.comp,
     agent: f.agent, note: f.note, otherReason: f.otherReason,
     shift: f.shift,
+    // 加班單:實際填的加班起訖與共計
+    otStart: f.otStart, otEnd: f.otEnd, otHours: f.otHours, otMinutes: f.otMinutes,
     endMon: f.endMon, endDay: f.endDay,
     mergedCount: f.mergedCount,
     segments: f.segments,
